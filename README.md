@@ -10,8 +10,7 @@ git pull origin main
 ### [Step 2] 作業用ブランチを作成する
 自分の作業専用のコピー（ブランチ）を作ります。
 名前は `feature/機能名` や `user/自分の名前/機能名` などわかりやすくします。
-\`\`\`bash
-# 例: 3Dボード作成機能の場合
+\`\`\`bash 例: 3Dボード作成機能の場合
 git checkout -b feature/board-3d
 \`\`\`
 
