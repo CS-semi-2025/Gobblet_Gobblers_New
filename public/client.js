@@ -34,6 +34,12 @@ const modalRestartBtn = document.getElementById('modalRestartBtn');
 const modalLeaveBtn = document.getElementById('modalLeaveBtn');
 const toggleHighlightBtn = document.getElementById('toggleHighlightBtn');
 
+// ★ここを追加: ホーム画面用ボタンの参照★
+const homeSettingsBtn = document.getElementById('homeSettingsBtn'); 
+const gameActionsTab = document.querySelector('.tab-btn[data-tab="tab-control"]'); // ゲーム設定タブボタン
+const gameActionsPane = document.getElementById('tab-control'); // ゲーム設定コンテンツパネル
+
+
 // ★ 新規: リザルトUIの要素
 const resultOverlay = document.getElementById('resultOverlay');
 const resultTitle = document.getElementById('resultTitle');
@@ -507,11 +513,38 @@ function renderHandDOM(){
 }
 
 // --- モーダル関連イベント ---
+//内容変更
 if (settingsBtn) {
     settingsBtn.addEventListener('click', () => {
+    console.log('ゲーム画面からモーダルを開きます');
+        // ゲーム操作タブを元に戻す
+        if (gameActionsTab) gameActionsTab.style.display = 'block'; 
+        modalOverlay.classList.remove('hidden');
+        // 環境設定タブ（tab-env）を強制的にアクティブにする
+        const envTab = document.querySelector('.tab-btn[data-tab="tab-env"]');
+        if (envTab) envTab.click();
+    });
+}
+
+// ★ここを追加: ホーム画面用ボタン★
+if (homeSettingsBtn) {
+    homeSettingsBtn.addEventListener('click', () => {
+        console.log('ホーム画面からモーダルを開きます');
+        
+        // ホーム画面で開いた場合、ゲーム操作タブとコンテンツを非表示にする
+        if (gameActionsTab) gameActionsTab.style.display = 'none';
+        
+        // 非表示にしたコンテンツを非アクティブにする必要はないが、安全のため
+        // if (gameActionsPane) gameActionsPane.classList.remove('active');
+        
+        // 環境設定タブ（tab-env）を強制的にアクティブにする（非表示タブがアクティブにならないように）
+        const envTab = document.querySelector('.tab-btn[data-tab="tab-env"]');
+        if (envTab) envTab.click(); 
+
         modalOverlay.classList.remove('hidden');
     });
 }
+
 if (closeModalBtn) {
     closeModalBtn.addEventListener('click', () => {
         modalOverlay.classList.add('hidden');
