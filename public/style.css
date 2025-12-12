@@ -35,15 +35,15 @@ main{ display:flex; gap:16px; margin-top:12px; }
 }
 
 /* 3D化に伴う変更 */
-.board-wrap { 
-  flex: 1; 
-  display:flex; 
-  justify-content:center; 
-  align-items:center; 
-  min-height: 500px; /* Canvasのための高さを確保 */
-  background: #f3f6fb; /* 3Dシーンの背景色と合わせる */
+.board-wrap {
+  flex: 1;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  min-height: 500px;
+  background: #f3f6fb;
   border-radius: 8px;
-  overflow: hidden; /* Canvasがはみ出ないように */
+  overflow: hidden;
 }
 
 .cell{
@@ -79,12 +79,16 @@ main{ display:flex; gap:16px; margin-top:12px; }
 .hand{ background:#fff; padding:10px; border-radius:8px; }
 .hand-row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
 .hand-piece{ cursor:pointer; display:flex; align-items:center; justify-content:center; }
-.selected{ 
-  outline:3px solid rgba(59,130,246,0.3); 
-  transform: translateY(-3px); 
+.selected{
+  outline:3px solid rgba(59,130,246,0.3);
+  transform: translateY(-3px);
   box-shadow: 0 6px 12px rgba(0,0,0,0.1);
 }
 .log{ background:#fbfdff; padding:8px; border-radius:8px; height:80px; overflow:auto; font-size:13px; color:var(--muted); }
+
+/* watch queue list small style */
+#watchList ul{ margin:8px 0 0 0; padding-left: 18px; color:#334155; font-size:13px; }
+#watchList li{ margin-bottom:4px; }
 
 /* ホーム画面 */
 #homeScreen {
@@ -254,11 +258,11 @@ main{ display:flex; gap:16px; margin-top:12px; }
   position: fixed;
   top: 0; left: 0;
   width: 100%; height: 100%;
-  background: rgba(0, 0, 0, 0.7); /* 少し暗くする */
+  background: rgba(0, 0, 0, 0.7);
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 2000; /* 設定モーダルより上に */
+  z-index: 2000;
   opacity: 1;
   transition: opacity 0.3s ease;
 }
@@ -282,7 +286,6 @@ main{ display:flex; gap:16px; margin-top:12px; }
   font-size: 4rem;
   margin: 0 0 10px 0;
   font-weight: 900;
-  /* 文字にグラデーション */
   background: linear-gradient(45deg, #ffd700, #ff8c00);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -316,7 +319,6 @@ main{ display:flex; gap:16px; margin-top:12px; }
 .secondary-btn:hover {
   text-decoration: underline;
 }
-
 @keyframes popIn {
   from { transform: scale(0.8); opacity: 0; }
   to { transform: scale(1); opacity: 1; }

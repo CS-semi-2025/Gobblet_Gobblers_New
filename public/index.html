@@ -31,13 +31,13 @@
 
       <div id="cheerLayer"></div>
 
-
       <aside class="panel">
         <div class="status">
           <div>あなた: <span id="meLabel">未割当</span></div>
           <div>ターン: <span id="turnLabel">—</span></div>
           <div>状態: <span id="gameStateLabel">待機中</span></div>
           <div>Room: <span id="currentRoomLabel">-</span></div>
+          <div id="watchList" style="margin-top:8px; font-size:13px; color:#444;"></div>
         </div>
 
         <div class="hand">
@@ -65,7 +65,7 @@
         <h2>設定</h2>
         <button id="closeModalBtn" class="close-btn">×</button>
       </div>
-      
+
       <div class="modal-tabs">
         <button class="tab-btn active" data-tab="tab-env">環境設定</button>
         <button class="tab-btn" data-tab="tab-control">ゲーム操作</button>
@@ -112,7 +112,8 @@
     <h1 id="resultTitle">WIN!</h1>
     <p id="resultMessage">おめでとうございます！</p>
     <div class="result-actions">
-      <button id="resultRestartBtn" class="action-btn">もう一度遊ぶ</button>
+      <button id="resultContinueBtn" class="action-btn">対戦続ける</button>
+      <button id="resultQuitBtn" class="action-btn danger">対戦やめる</button>
       <button id="resultCloseBtn" class="secondary-btn">閉じる</button>
     </div>
   </div>
