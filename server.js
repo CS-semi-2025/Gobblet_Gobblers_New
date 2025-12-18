@@ -137,6 +137,9 @@ io.on("connection", (socket) => {
 
     socket.data.playerSlot = assigned;
 
+    // ★追加
+    socket.emit("assign", { slot: assigned });
+
     // 5. ゲーム開始判定
     if (roomState.players.A && roomState.players.B) {
       if (!roomState.started && !roomState.winner) {

@@ -642,7 +642,16 @@ socket.on('connect', () => {
 });
 socket.on('init', (s) => {});
 socket.on('assign', (d) => {
-    if(d && d.slot) addLog(`(System) Role Assigned: ${d.slot}`);
+    if (d && d.slot) {
+        mySlot = d.slot;   // ★これを追加
+        meLabel.textContent = mySlot;
+        addLog(`(System) Role Assigned: ${d.slot}`);
+
+        // 状態がすでに来ていたら手駒再描画
+        if (state) {
+            render(state);
+        }
+    }
 });
 socket.on('start_game', (s) => {
   // ゲーム開始時にリザルトが開いていたら閉じる
