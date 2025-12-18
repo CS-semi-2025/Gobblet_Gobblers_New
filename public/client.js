@@ -207,6 +207,9 @@ function launchFlyingComment(text) {
   el.className = "flying-comment";
   el.textContent = text;
 
+  // ランダム色
+  el.style.color = randomColor();
+
   // ランダム高さ
   el.style.top = `${Math.random() * 60 + 10}%`;
 
@@ -214,6 +217,13 @@ function launchFlyingComment(text) {
 
   // アニメ終了後削除
   setTimeout(() => el.remove(), 6000);
+}
+
+function randomColor() {
+  const r = Math.floor(Math.random() * 200 + 55); 
+  const g = Math.floor(Math.random() * 200 + 55);
+  const b = Math.floor(Math.random() * 200 + 55);
+  return `rgb(${r},${g},${b})`;
 }
 
 // === チャットログ表示 ===
@@ -239,7 +249,12 @@ chatInput.addEventListener("keydown", e => {
 // === 受信時にチャット表示＋流れるコメント ===
 socket.on("chat_message", (msg) => {
   appendChat(msg);
-  launchFlyingComment(msg.text); // ← ★追加部分
+  launchFlyingComment(msg.text);
+});
+
+// === cheer（応援コメント）受信 ===
+socket.on("cheer", (data) => {
+  launchFlyingComment(`${data.name}: ${data.text}`);
 });
 
 // 初期履歴ロード
