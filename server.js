@@ -1,4 +1,4 @@
-// server.js (Multi-room & Auto-ID generation & Chat supported)
+// ===== server.js =====
 import express from "express";
 import http from "http";
 import { Server as IOServer } from "socket.io";
@@ -9,312 +9,245 @@ const io = new IOServer(server);
 
 app.use(express.static("public"));
 
-// ----------------- データ管理 -----------------
+//基礎基盤教養基盤
+const rooms = {};
 
-// 全部屋の状態を管理するオブジェクト
-// キー: ルームID, 値: その部屋のgameState
-const rooms = {}; 
-
-// ランダムなIDを生成する関数 (例: "x9z2")
-function generateRoomId() {
-  return Math.random().toString(36).substring(2, 6);
-}
-
-// 部屋ごとの初期状態を作る関数
 function createNewGameState() {
   return {
-    board: [
-      [[], [], []],
-      [[], [], []],
-      [[], [], []]
-    ],
+    board: [[[],[],[]],[[],[],[]],[[],[],[]]],
     players: { A: null, B: null },
     currentTurn: null,
     winner: null,
     started: false,
-    chatLog: [] // ★追加: 部屋ごとのチャット履歴をここに保存
+    watchQueue: [],
+    postDecisions: { A: null, B: null }
   };
 }
 
-// サイズ定義
-const SIZE_VAL = { small: 1, medium: 2, large: 3 };
+const SIZE_VAL = { small:1, medium:2, large:3 };
 
-// ----------------- ルール判定関数 -----------------
-function canPlaceAt(board, toR, toC, pieceSizeName) {
-  const targetStack = board[toR][toC];
-  const topPiece = targetStack.at(-1);
-  const pieceVal = SIZE_VAL[pieceSizeName];
-  if (!topPiece) return true;
-  if (pieceVal > SIZE_VAL[topPiece.size]) return true;
-  return false;
+/* =========================
+   ルール
+========================= */
+
+function canPlaceAt(board,r,c,size){
+  const top = board[r][c].at(-1);
+  return !top || SIZE_VAL[size] > SIZE_VAL[top.size];
 }
 
-function checkWinner(board) {
-  const lines = [
-    [[0,0],[0,1],[0,2]], [[1,0],[1,1],[1,2]], [[2,0],[2,1],[2,2]], // rows
-    [[0,0],[1,0],[2,0]], [[0,1],[1,1],[2,1]], [[0,2],[1,2],[2,2]], // cols
-    [[0,0],[1,1],[2,2]], [[0,2],[1,1],[2,0]] // diags
+function checkWinner(board){
+  const L=[
+    [[0,0],[0,1],[0,2]],[[1,0],[1,1],[1,2]],[[2,0],[2,1],[2,2]],
+    [[0,0],[1,0],[2,0]],[[0,1],[1,1],[2,1]],[[0,2],[1,2],[2,2]],
+    [[0,0],[1,1],[2,2]],[[0,2],[1,1],[2,0]]
   ];
-  for (const line of lines) {
-    const topOwners = line.map(([r,c]) => {
-      const stack = board[r][c];
-      return stack.length ? stack.at(-1).owner : null; 
-    });
-    if (topOwners.every(o => o && o === topOwners[0])) {
-      return topOwners[0];
-    }
+  for(const line of L){
+    const o=line.map(([r,c])=>board[r][c].at(-1)?.owner);
+    if(o.every(x=>x&&x===o[0])) return o[0];
   }
   return null;
 }
 
-// ----------------- クライアント送信用の整形 -----------------
-function sanitizeState(state) {
-  const players = {};
-  for (const k of ['A','B']) {
-    const p = state.players[k];
-    if (p) {
-      players[k] = {
-        slot: k,
-        name: p.name,
-        color: p.color,
-        pieces: { ...p.pieces },
-        id: p.id
-      };
-    } else players[k] = null;
+/* =========================
+   ユーティリティ
+========================= */
+
+function sanitizeState(state){
+  const players={};
+  for(const s of ['A','B']){
+    const p=state.players[s];
+    players[s]=p?{slot:s,name:p.name,pieces:{...p.pieces}}:null;
   }
   return {
-    board: state.board,
+    board:state.board,
     players,
-    currentTurn: state.currentTurn,
-    winner: state.winner,
-    started: state.started
+    currentTurn:state.currentTurn,
+    winner:state.winner,
+    started:state.started,
+    watchQueueLength: state.watchQueue.length
   };
 }
 
-// ----------------- Socket.IO イベント処理 -----------------
+function promoteFromQueue(roomState, slot){
+  while(roomState.watchQueue.length){
+    const id=roomState.watchQueue.shift();
+    const s=io.sockets.sockets.get(id);
+    if(!s) continue;
+    roomState.players[slot]={
+      id:s.id,
+      name:s.data.name,
+      pieces:{small:2,medium:2,large:2}
+    };
+    s.data.playerSlot=slot;
+    s.emit("assign",{slot});
+    return true;
+  }
+  return false;
+}
 
-io.on("connection", (socket) => {
-  console.log("client connected:", socket.id);
-
-  // Joinイベント
-  socket.on("join", (data, ack) => {
-    
-    // 1. ルームIDの決定
-    let roomID = (data && data.room) ? String(data.room) : generateRoomId();
-
-    // 自動生成の場合の重複チェック
-    if (!data.room) {
-        while (rooms[roomID]) {
-            roomID = generateRoomId();
-        }
+function resetBoard(roomState){
+  roomState.board=[[[],[],[]],[[],[],[]],[[],[],[]]];
+  for(const s of ['A','B']){
+    if(roomState.players[s]){
+      roomState.players[s].pieces={small:2,medium:2,large:2};
     }
+  }
+  roomState.currentTurn="A";
+  roomState.winner=null;
+  roomState.started=!!(roomState.players.A&&roomState.players.B);
+}
 
-    const name = (data && data.name) ? String(data.name).slice(0,50) : "Guest";
 
-    // 2. 部屋に参加
-    socket.join(roomID);
-    socket.data.roomID = roomID; // ソケットに部屋IDを記憶
+  //強制終了するためのやつ（設定モーダル用）
 
-    // 3. 部屋データがなければ新規作成
-    if (!rooms[roomID]) {
-      rooms[roomID] = createNewGameState();
-      console.log(`New room created: ${roomID}`);
-    }
-    
-    const roomState = rooms[roomID]; 
 
-    // 4. プレイヤー割り当て logic
-    let assigned = null;
-    if (!roomState.players.A) {
-      roomState.players.A = { id: socket.id, name, color: "blue", pieces: { small:2, medium:2, large:2 } };
-      assigned = "A";
-    } else if (!roomState.players.B) {
-      roomState.players.B = { id: socket.id, name, color: "orange", pieces: { small:2, medium:2, large:2 } };
-      assigned = "B";
-    } else {
-      assigned = "spectator";
-    }
+function forceEndGame(roomID, leaverSlot){
+  const r = rooms[roomID];
+  if(!r) return;
 
-    socket.data.playerSlot = assigned;
+  const otherSlot = leaverSlot === "A" ? "B" : "A";
+  const leaver = r.players[leaverSlot];
+  const other = r.players[otherSlot];
 
-    // ★追加
-    socket.emit("assign", { slot: assigned });
+  if(leaver){
+    r.watchQueue.push(leaver.id);
+    r.players[leaverSlot] = null;
+  }
 
-    // 5. ゲーム開始判定
-    if (roomState.players.A && roomState.players.B) {
-      if (!roomState.started && !roomState.winner) {
-          roomState.currentTurn = "A";
-          roomState.started = true;
+  if(other){
+    // 相手は続行扱いにする
+    r.players[leaverSlot] = other;
+    r.players[otherSlot] = null;
+    r.players[leaverSlot].pieces = {small:2,medium:2,large:2};
+  }
+
+  promoteFromQueue(r, otherSlot);
+
+  resetBoard(r);
+  io.to(roomID).emit("start_game", sanitizeState(r));
+}
+
+//ゲーム評価
+
+function evaluatePostGame(roomID){
+  const r = rooms[roomID];
+  if(!r) return;
+
+  const {A,B} = r.postDecisions;
+  if(!A || !B) return;
+
+  const survivors = [];
+
+  function handle(slot){
+    const p = r.players[slot];
+    const act = r.postDecisions[slot];
+    if(p){
+      if(act === "continue"){
+        survivors.push(p);
+      }else{
+        r.watchQueue.push(p.id);
       }
-      io.to(roomID).emit("start_game", sanitizeState(roomState));
-    } else {
-      io.to(roomID).emit("update_state", sanitizeState(roomState));
+    }
+    r.players[slot] = null;
+  }
+
+  handle("A");
+  handle("B");
+
+  for(const s of ["A","B"]){
+    if(survivors.length){
+      r.players[s] = survivors.shift();
+    }else{
+      promoteFromQueue(r, s);
+    }
+  }
+
+  r.postDecisions = {A:null,B:null};
+  resetBoard(r);
+  io.to(roomID).emit("start_game", sanitizeState(r));
+}
+
+
+
+io.on("connection",socket=>{
+
+  socket.on("join",(data,ack)=>{
+    const roomID=data.room;
+    socket.join(roomID);
+    socket.data.roomID=roomID;
+    socket.data.name=data.name;
+
+    if(!rooms[roomID]) rooms[roomID]=createNewGameState();
+    const r=rooms[roomID];
+
+    let slot="spectator";
+    if(!r.players.A) slot="A";
+    else if(!r.players.B) slot="B";
+
+    if(slot!=="spectator"){
+      r.players[slot]={id:socket.id,name:data.name,pieces:{small:2,medium:2,large:2}};
+    }else{
+      r.watchQueue.push(socket.id);
     }
 
-    // ★追加: 参加時に過去のチャットログを送信 (このユーザーだけに)
-    socket.emit("chat_init", roomState.chatLog);
+    socket.data.playerSlot=slot;
 
-    // クライアントに結果を返す
-    if (ack) ack({ ok: true, slot: assigned, roomID: roomID });
+    if(r.players.A && r.players.B){
+      r.started=true;
+      r.currentTurn="A";
+      io.to(roomID).emit("start_game",sanitizeState(r));
+    }else{
+      io.to(roomID).emit("update_state",sanitizeState(r));
+    }
+
+    ack({ok:true,slot});
   });
 
-  // 駒の配置・移動
-  socket.on("place_piece", (payload, ack) => {
-    const roomID = socket.data.roomID;
-    if (!roomID || !rooms[roomID]) return;
+  socket.on("place_piece",(p,ack)=>{
+    const r=rooms[socket.data.roomID];
+    const s=socket.data.playerSlot;
+    if(!r||!r.started||r.winner||r.currentTurn!==s) return;
 
-    const roomState = rooms[roomID];
-    const slot = socket.data.playerSlot;
+    try{
+      if(p.action==="place_from_hand"){
+        const pl=r.players[s];
+        if(pl.pieces[p.size]<=0) throw "";
+        if(!canPlaceAt(r.board,p.to.r,p.to.c,p.size)) throw "";
+        r.board[p.to.r][p.to.c].push({owner:s,size:p.size});
+        pl.pieces[p.size]--;
+      }else{
+        const top=r.board[p.from.r][p.from.c].pop();
+        if(!canPlaceAt(r.board,p.to.r,p.to.c,top.size)) throw "";
+        r.board[p.to.r][p.to.c].push(top);
+      }
 
-    if (slot !== "A" && slot !== "B") return ack({ error: "spectator" });
-    if (!roomState.started) return ack({ error: "not_started" });
-    if (roomState.winner) return ack({ error: "game_over" });
-    if (roomState.currentTurn !== slot) return ack({ error: "not_your_turn" });
-
-    try {
-        if (payload.action === "place_from_hand") {
-            const { size, to } = payload;
-            const player = roomState.players[slot];
-            if (player.pieces[size] <= 0) throw new Error("no piece");
-            if (!canPlaceAt(roomState.board, to.r, to.c, size)) throw new Error("illegal");
-            
-            roomState.board[to.r][to.c].push({ owner: slot, size, color: player.color });
-            player.pieces[size]--;
-
-        } else if (payload.action === "move_on_board") {
-            const { from, to } = payload;
-            const srcStack = roomState.board[from.r][from.c];
-            if (!srcStack.length) throw new Error("empty");
-            const top = srcStack.at(-1);
-            if (top.owner !== slot) throw new Error("not yours");
-            if (!canPlaceAt(roomState.board, to.r, to.c, top.size)) throw new Error("illegal");
-
-            srcStack.pop();
-            roomState.board[to.r][to.c].push(top);
-        }
-
-        const winner = checkWinner(roomState.board);
-        if (winner) {
-            roomState.winner = winner;
-            roomState.started = false;
-            io.to(roomID).emit("game_over", { winner, state: sanitizeState(roomState) });
-        } else {
-            roomState.currentTurn = (slot === "A") ? "B" : "A";
-            io.to(roomID).emit("update_state", sanitizeState(roomState));
-        }
-        if (ack) ack({ ok: true });
-
-    } catch (e) {
-        if (ack) ack({ error: e.message });
+      const w=checkWinner(r.board);
+      if(w){
+        r.winner=w;
+        r.started=false;
+        r.postDecisions={A:null,B:null};
+        io.to(socket.data.roomID).emit("game_over",{winner:w,state:sanitizeState(r)});
+      }else{
+        r.currentTurn=s==="A"?"B":"A";
+        io.to(socket.data.roomID).emit("update_state",sanitizeState(r));
+      }
+      ack({ok:true});
+    }catch{
+      ack({error:"invalid"});
     }
   });
 
-  // -------------------------------------------------------------
-  // ★追加: チャットメッセージ処理
-  // -------------------------------------------------------------
-  socket.on("chat_message", (data) => {
-    const roomID = socket.data.roomID;
-    if (!roomID || !rooms[roomID]) return;
-
-    const roomState = rooms[roomID];
-    const slot = socket.data.playerSlot;
-
-    // 送信者名の特定
-    let name = "観戦者";
-    if (slot === "A" && roomState.players.A) name = roomState.players.A.name;
-    else if (slot === "B" && roomState.players.B) name = roomState.players.B.name;
-
-    const text = String(data?.text || "").slice(0, 200); // 200文字制限
-    if (!text) return;
-
-    const msg = {
-      name,
-      text,
-      time: Date.now(),
-      slot // プレイヤーの色などをクライアント側で使う場合に便利
-    };
-
-    // 履歴に追加 (上限50件)
-    roomState.chatLog.push(msg);
-    if (roomState.chatLog.length > 50) roomState.chatLog.shift();
-
-    // 同じ部屋の全員に送信
-    io.to(roomID).emit("chat_message", msg);
-  });
-  // -------------------------------------------------------------
-  // ★ここ！ cheer(応援)イベント
-  // -------------------------------------------------------------
-  socket.on("cheer", (data) => {
-    const roomID = socket.data.roomID;
-    if (!roomID || !rooms[roomID]) return;
-
-    const roomState = rooms[roomID];
-    const slot = socket.data.playerSlot;
-
-    let name = "観戦者";
-    if (slot === "A" && roomState.players.A) name = roomState.players.A.name;
-    else if (slot === "B") name = roomState.players.B.name;
-
-    const text = String(data?.text || "").slice(0, 50);
-    if (!text) return;
-
-    const msg = {
-      name,
-      text,
-      time: Date.now(),
-      type: "cheer",
-      slot
-    };
-
-    // ログに残す場合（残したくなかったらコメントアウト）
-    roomState.chatLog.push(msg);
-    if (roomState.chatLog.length > 50) roomState.chatLog.shift();
-
-    io.to(roomID).emit("cheer", msg);
-  });
-  // 再戦処理
-  socket.on("restart_game", (data, ack) => {
-      const roomID = socket.data.roomID;
-      if (!roomID || !rooms[roomID]) return;
-      
-      const roomState = rooms[roomID];
-      // 状態リセット
-      roomState.board = [[[],[],[]],[[],[],[]],[[],[],[]]];
-      if(roomState.players.A) roomState.players.A.pieces = { small:2, medium:2, large:2 };
-      if(roomState.players.B) roomState.players.B.pieces = { small:2, medium:2, large:2 };
-      roomState.currentTurn = "A";
-      roomState.winner = null;
-      roomState.started = !!(roomState.players.A && roomState.players.B);
-
-      io.to(roomID).emit("start_game", sanitizeState(roomState));
-      if(ack) ack({ ok: true });
+  socket.on("postgame_decision",(d,ack)=>{
+    const r=rooms[socket.data.roomID];
+    r.postDecisions[socket.data.playerSlot]=d.action;
+    io.to(socket.data.roomID).emit("postgame_update",{slot:socket.data.playerSlot,action:d.action});
+    evaluatePostGame(socket.data.roomID);
+    ack({ok:true});
   });
 
-  // 切断処理
-  socket.on("disconnect", () => {
-    const roomID = socket.data.roomID;
-    if (roomID && rooms[roomID]) {
-        const roomState = rooms[roomID];
-        const slot = socket.data.playerSlot;
-        
-        if (slot === "A") roomState.players.A = null;
-        if (slot === "B") roomState.players.B = null;
-        
-        roomState.started = false;
-
-        // 誰もいなくなったら部屋をメモリから削除
-        const socketsInRoom = io.sockets.adapter.rooms.get(roomID);
-        if (!socketsInRoom || socketsInRoom.size === 0) {
-            delete rooms[roomID];
-            console.log(`Room deleted: ${roomID}`);
-        } else {
-            io.to(roomID).emit("update_state", sanitizeState(roomState));
-        }
-    }
+  socket.on("force_quit",()=>{
+    forceEndGame(socket.data.roomID, socket.data.playerSlot);
   });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
-});
+server.listen(3000);
