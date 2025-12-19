@@ -13,6 +13,10 @@ const createRoomBtn = document.getElementById("createRoomBtn");
 const roomInput = document.getElementById("roomInput");
 const homeNameInput = document.getElementById("homeNameInput");
 
+// client.js 冒頭付近に追加
+const matchScreen = document.getElementById("matchScreen");
+const waitingRoomLabel = document.getElementById("waitingRoomLabel");
+
 // ゲーム画面用
 const gameScreen = document.getElementById("gameScreen");
 const logEl = document.getElementById('log');
@@ -20,7 +24,7 @@ const meLabel = document.getElementById('meLabel');
 const turnLabel = document.getElementById('turnLabel');
 const gameStateLabel = document.getElementById('gameStateLabel');
 const currentRoomLabel = document.getElementById('currentRoomLabel');
-const gameNameInput = document.getElementById('nameInput');
+//const gameNameInput = document.getElementById('nameInput');
 const boardWrap = document.querySelector('.board-wrap');
 const handContainer = document.getElementById('handContainer');
 
@@ -67,6 +71,7 @@ if (params.get('room')) {
     roomInput.value = params.get('room');
 }
 
+
 // --- ▼▼▼ 画面遷移・入室ロジック ▼▼▼ ---
 
 createRoomBtn.addEventListener("click", () => {
@@ -84,42 +89,23 @@ createRoomBtn.addEventListener("click", () => {
     };
 
     socket.emit("join", joinData, (ack) => {
-        if (ack && (ack.ok || ack.slot)) {
-            // 参加成功
-            mySlot = ack.slot;
-            currentRoomID = roomVal;
-            
-            // 画面情報の更新
-            currentRoomLabel.textContent = currentRoomID;
-            gameNameInput.value = nameVal;
-            
-            addLog(`ルーム「${currentRoomID}」に参加しました (Role: ${mySlot})`);
-            if (mySlot === 'spectator') addLog('観戦モードです');
+        if (!ack?.ok) return;
 
-            // 画面切り替え実行
-            toggleScreen(true);
+        mySlot = ack.slot;
+        currentRoomID = ack.roomID;
+        currentRoomLabel.textContent = currentRoomID;
 
-            // URLを更新
-            const newUrl = `${window.location.pathname}?room=${encodeURIComponent(currentRoomID)}`;
-            window.history.pushState({ path: newUrl }, '', newUrl);
+        addLog(`ルーム「${currentRoomID}」に参加しました (${mySlot})`);
 
-        } else {
-            // 参加失敗
-            const errorMsg = ack && ack.error ? ack.error : "参加できませんでした";
-            alert("エラー: " + errorMsg);
-        }
+    // ❌ ここで画面遷移しない！！
     });
 });
 
-function toggleScreen(showGame) {
-    if (showGame) {
-        homeScreen.style.display = "none";
-        gameScreen.style.display = "block";
-        onWindowResize();
-    } else {
-        homeScreen.style.display = "flex";
-        gameScreen.style.display = "none";
-    }
+
+function toggleScreen(screen) {
+  homeScreen.style.display   = (screen==="home") ? "block" : "none";
+  matchScreen.style.display  = (screen==="match") ? "block" : "none";
+  gameScreen.style.display   = (screen==="game") ? "block" : "none";
 }
 
 
@@ -336,9 +322,12 @@ function createPieceMesh(size, owner) {
 
 function render(stateObj) {
     state = stateObj;
-    
-    turnLabel.textContent = state.currentTurn || '—';
-    gameStateLabel.textContent = state.winner ? `終了: ${state.winner}` : (state.started ? '進行中' : '待機中');
+    if (state.currentTurn) {
+        const text = state.currentTurn === 'A' ? 'Aの番' : 'Bの番';
+        turnLabel.textContent = text;
+    } else {
+        turnLabel.textContent = '—'; gameStateLabel.textContent = state.winner ? `終了: ${state.winner}` : (state.started ? '進行中' : '待機中');
+    }
     meLabel.textContent = mySlot ? `${mySlot}` : '未割当';
 
     pieceMeshes.forEach(mesh => scene.remove(mesh));
@@ -377,6 +366,8 @@ function render(stateObj) {
 }
 
 function onCanvasClick(event) {
+    if (mySlot === 'spectator') return;
+
     if (!state.started && !state.winner) return;
 
     const rect = renderer.domElement.getBoundingClientRect();
@@ -704,13 +695,14 @@ socket.on('assign', (d) => {
         }
     }
 });
-socket.on('start_game', (s) => {
-  // ゲーム開始時にリザルトが開いていたら閉じる
-  resultOverlay.classList.add('hidden');
-  addLog('ゲーム開始！');
-  clearSelection();
-  render(s);
+socket.on("waiting_for_opponent", (s) => {
+    waitingRoomLabel.textContent = currentRoomID;
+    toggleScreen("match");
+    render(s);
+    addLog("相手待機中...");
 });
+
+
 socket.on('update_state', (s) => {
   render(s); 
 });
@@ -730,9 +722,22 @@ socket.on('disconnect', () => {
 });
 
 // --- 実行開始 ---
-initThree(); 
-buildBoard3D(); 
-if (controls) {
-    controls.update(); 
-}
-renderer.render(scene, camera);
+let threeInitialized = false;
+
+socket.on('start_game', (s) => {
+    
+    resultOverlay.classList.add('hidden');
+    toggleScreen("game");
+
+    if (!threeInitialized) {
+        initThree();
+        buildBoard3D();
+        threeInitialized = true;
+    }
+
+    addLog('ゲーム開始！');
+    addLog(`先攻: ${s.currentTurn}`);
+    clearSelection();
+    render(s);
+});
+
