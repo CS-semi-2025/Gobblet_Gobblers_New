@@ -141,15 +141,14 @@ io.on("connection", (socket) => {
     socket.emit("assign", { slot: assigned });
 
     // 5. ゲーム開始判定
-    if (!roomState.players.B) {
-      // B がいない場合は「待機中」を送るだけ
-      socket.emit("waiting_for_opponent", sanitizeState(roomState));
-      io.to(roomID).emit("update_state", sanitizeState(roomState));
-    } else {
-      const first = Math.random() < 0.5 ? "A" : "B";
-      roomState.currentTurn = first;
-      roomState.started = true;
+    if (roomState.players.A && roomState.players.B) {
+      if (!roomState.started && !roomState.winner) {
+          roomState.currentTurn = "A";
+          roomState.started = true;
+      }
       io.to(roomID).emit("start_game", sanitizeState(roomState));
+    } else {
+      io.to(roomID).emit("update_state", sanitizeState(roomState));
     }
 
     // ★追加: 参加時に過去のチャットログを送信 (このユーザーだけに)
