@@ -589,6 +589,13 @@ tabButtons.forEach(btn => {
 
 if (modalRestartBtn) {
     modalRestartBtn.addEventListener('click', () => {
+        // ★ここから追加: 観戦者チェック★
+        if (mySlot === 'spectator') {
+            addLog('⚠ 観戦者はゲームの再戦リクエストを送信できません。');
+            modalOverlay.classList.add('hidden');
+            return; // 処理をここで中断
+        }
+        // ★追加ここまで★
         socket.emit('restart_game', {}, (ack) => {
             if (ack && ack.ok) addLog('再戦リクエスト送信');
             else if (ack && ack.error) addLog('再戦失敗: ' + ack.error);
