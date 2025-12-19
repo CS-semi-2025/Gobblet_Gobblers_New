@@ -350,12 +350,16 @@ function render(stateObj) {
                 const stack = (state.board[r] && state.board[r][c]) ? state.board[r][c] : [];
                 const x = c * CELL_GAP + BOARD_OFFSET;
                 const z = r * CELL_GAP + BOARD_OFFSET;
-                let currentHeight = 0;
                 for (let i = 0; i < stack.length; i++) {
                     const p = stack[i]; 
                     const pieceMesh = createPieceMesh(p.size, p.owner);
-                    const y = currentHeight + pieceMesh.geometry.parameters.height / 2 + 0.1;
+
+                    // ★修正ポイント: 常に盤面の床上(0.1)を基準に配置する
+                    // Cylinderの中心Y座標 = (高さ / 2) + 盤面の高さオフセット(0.1)
+                    const y = pieceMesh.geometry.parameters.height / 2 + 0.1;
+                    
                     pieceMesh.position.set(x, y, z);
+                    
                     pieceMesh.userData = { 
                         type: 'piece', 
                         r, c, 
@@ -364,8 +368,7 @@ function render(stateObj) {
                         isTop: (i === stack.length - 1) 
                     };
                     scene.add(pieceMesh);
-                    pieceMeshes.push(pieceMesh); 
-                    currentHeight += pieceMesh.geometry.parameters.height * 0.2; 
+                    pieceMeshes.push(pieceMesh);
                 }
             }
         }
