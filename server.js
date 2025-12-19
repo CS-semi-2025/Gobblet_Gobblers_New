@@ -141,15 +141,28 @@ io.on("connection", (socket) => {
     socket.emit("assign", { slot: assigned });
 
     // 5. ゲーム開始判定
-    if (!roomState.players.B) {
-      // B がいない場合は「待機中」を送るだけ
-      socket.emit("waiting_for_opponent", sanitizeState(roomState));
-      io.to(roomID).emit("update_state", sanitizeState(roomState));
+    // まだゲームが始まっていない場合のみ開始判定
+    if (!roomState.started) {
+      if (!roomState.players.B) {
+        // Aだけいる状態
+        socket.emit("waiting_for_opponent", sanitizeState(roomState));
+      } else {
+        // AとBが揃った「最初の瞬間」
+        const first = Math.random() < 0.5 ? "A" : "B";
+        roomState.currentTurn = first;
+        roomState.started = true;
+
+        io.to(roomID).emit("start_game", sanitizeState(roomState));
+      }
     } else {
-      const first = Math.random() < 0.5 ? "A" : "B";
-      roomState.currentTurn = first;
-      roomState.started = true;
-      io.to(roomID).emit("start_game", sanitizeState(roomState));
+      // ★ すでにゲーム中
+      if (assigned === "spectator") {
+        // 観戦者はゲーム画面へ
+        socket.emit("start_game", sanitizeState(roomState));
+      } else {
+        // 既存プレイヤーの再接続など
+        socket.emit("update_state", sanitizeState(roomState));
+      }
     }
 
     // ★追加: 参加時に過去のチャットログを送信 (このユーザーだけに)

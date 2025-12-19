@@ -89,40 +89,18 @@ createRoomBtn.addEventListener("click", () => {
     };
 
     socket.emit("join", joinData, (ack) => {
-        if (ack && (ack.ok || ack.slot)) {
-            // 参加成功
-            mySlot = ack.slot;
-            currentRoomID = roomVal;
-            
-            
-            currentRoomLabel.textContent = currentRoomID;
+        if (!ack?.ok) return;
 
-            // 画面情報の更新
-            if (mySlot !== "spectator") {
-                // マッチ画面へ入る
-                waitingRoomLabel.textContent = currentRoomID;
-                toggleScreen("match");
-            } else {
-                // 観戦者はゲーム画面を即表示
-                toggleScreen("game");
-            }
-            addLog(`ルーム「${currentRoomID}」に参加しました (Role: ${mySlot})`);
-            if (mySlot === 'spectator') addLog('観戦モードです');
+        mySlot = ack.slot;
+        currentRoomID = ack.roomID;
+        currentRoomLabel.textContent = currentRoomID;
 
-            // 画面切り替え実行
-            //toggleScreen(true);
+        addLog(`ルーム「${currentRoomID}」に参加しました (${mySlot})`);
 
-            // URLを更新
-            const newUrl = `${window.location.pathname}?room=${encodeURIComponent(currentRoomID)}`;
-            window.history.pushState({ path: newUrl }, '', newUrl);
-
-        } else {
-            // 参加失敗
-            const errorMsg = ack && ack.error ? ack.error : "参加できませんでした";
-            alert("エラー: " + errorMsg);
-        }
+    // ❌ ここで画面遷移しない！！
     });
 });
+
 
 function toggleScreen(screen) {
   homeScreen.style.display   = (screen==="home") ? "block" : "none";
@@ -715,9 +693,12 @@ socket.on('assign', (d) => {
     }
 });
 socket.on("waiting_for_opponent", (s) => {
-  render(s); // 状態だけ反映
-  addLog("相手待機中...");
+    waitingRoomLabel.textContent = currentRoomID;
+    toggleScreen("match");
+    render(s);
+    addLog("相手待機中...");
 });
+
 
 socket.on('update_state', (s) => {
   render(s); 
@@ -741,6 +722,7 @@ socket.on('disconnect', () => {
 let threeInitialized = false;
 
 socket.on('start_game', (s) => {
+    
     resultOverlay.classList.add('hidden');
     toggleScreen("game");
 
