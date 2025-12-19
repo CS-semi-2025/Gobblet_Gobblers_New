@@ -213,6 +213,9 @@ function launchFlyingComment(text) {
   el.className = "flying-comment";
   el.textContent = text;
 
+  // ランダム色
+  el.style.color = randomColor();
+
   // ランダム高さ
   el.style.top = `${Math.random() * 60 + 10}%`;
 
@@ -220,6 +223,13 @@ function launchFlyingComment(text) {
 
   // アニメ終了後削除
   setTimeout(() => el.remove(), 6000);
+}
+
+function randomColor() {
+  const r = Math.floor(Math.random() * 200 + 55); 
+  const g = Math.floor(Math.random() * 200 + 55);
+  const b = Math.floor(Math.random() * 200 + 55);
+  return `rgb(${r},${g},${b})`;
 }
 
 // === チャットログ表示 ===
@@ -245,7 +255,12 @@ chatInput.addEventListener("keydown", e => {
 // === 受信時にチャット表示＋流れるコメント ===
 socket.on("chat_message", (msg) => {
   appendChat(msg);
-  launchFlyingComment(msg.text); // ← ★追加部分
+  launchFlyingComment(msg.text);
+});
+
+// === cheer（応援コメント）受信 ===
+socket.on("cheer", (data) => {
+  launchFlyingComment(`${data.name}: ${data.text}`);
 });
 
 // 初期履歴ロード
@@ -682,7 +697,16 @@ socket.on('connect', () => {
 });
 socket.on('init', (s) => {});
 socket.on('assign', (d) => {
-    if(d && d.slot) addLog(`(System) Role Assigned: ${d.slot}`);
+    if (d && d.slot) {
+        mySlot = d.slot;   // ★これを追加
+        meLabel.textContent = mySlot;
+        addLog(`(System) Role Assigned: ${d.slot}`);
+
+        // 状態がすでに来ていたら手駒再描画
+        if (state) {
+            render(state);
+        }
+    }
 });
 socket.on('start_game', (s) => {
   // ゲーム開始時にリザルトが開いていたら閉じる
