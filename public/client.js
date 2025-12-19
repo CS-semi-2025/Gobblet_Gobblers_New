@@ -3,6 +3,13 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import confetti from 'canvas-confetti'; // ★追加: 紙吹雪用ライブラリ
 
+
+const isMobile = window.innerWidth <= 768;
+
+const BOARD_SIZE = isMobile
+  ? Math.min(window.innerWidth * 0.92, 320)
+  : 420;
+
 // --- Socket.IO 接続 ---
 const socket = io();
 
@@ -167,8 +174,14 @@ function initThree() {
 
     // レンダラー
     renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(boardWrap.clientWidth, 500);
+    
     renderer.shadowMap.enabled = true;
+
+    boardWrap.style.width = BOARD_SIZE + "px";
+    boardWrap.style.height = BOARD_SIZE + "px";
+
+    renderer.setSize(BOARD_SIZE, BOARD_SIZE);
+
     boardWrap.innerHTML = '';
     boardWrap.appendChild(renderer.domElement);
 
@@ -190,6 +203,13 @@ function initThree() {
     window.addEventListener('resize', onWindowResize);
 
     animate();
+
+    if (isMobile && controls) {
+    controls.enableRotate = false;
+    controls.enableZoom = false;
+    controls.enablePan = false;
+}
+
 }
 
 function animate() {
@@ -479,13 +499,18 @@ function clearSelection() {
 }
 
 function onWindowResize() {
-    if (boardWrap.clientWidth === 0) return;
+    if (!renderer) return;
 
-    const width = boardWrap.clientWidth;
-    const height = 500; 
-    camera.aspect = width / height;
+    const size = isMobile
+      ? Math.min(window.innerWidth * 0.92, 320)
+      : 420;
+
+    boardWrap.style.width = size + "px";
+    boardWrap.style.height = size + "px";
+
+    camera.aspect = 1;
     camera.updateProjectionMatrix();
-    renderer.setSize(width, height);
+    renderer.setSize(size, size);
 }
 
 
@@ -589,6 +614,13 @@ tabButtons.forEach(btn => {
 
 if (modalRestartBtn) {
     modalRestartBtn.addEventListener('click', () => {
+        // ★ここから追加: 観戦者チェック★
+        if (mySlot === 'spectator') {
+            addLog('⚠ 観戦者はゲームの再戦リクエストを送信できません。');
+            modalOverlay.classList.add('hidden');
+            return; // 処理をここで中断
+        }
+        // ★追加ここまで★
         socket.emit('restart_game', {}, (ack) => {
             if (ack && ack.ok) addLog('再戦リクエスト送信');
             else if (ack && ack.error) addLog('再戦失敗: ' + ack.error);

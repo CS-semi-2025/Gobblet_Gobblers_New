@@ -342,3 +342,130 @@ main{ display:flex; gap:16px; margin-top:12px; }
   50%  { opacity: 1; }
   100% { transform: translateX(-120vw); opacity: 0; }
 }
+
+/* ===== スマホ対応：完全版 ===== */
+@media (max-width: 768px) {
+
+  /* 全体レイアウト */
+  main {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* ヘッダーをコンパクトに */
+  header {
+    padding: 6px 8px;
+  }
+
+  header h1 {
+    font-size: 18px;
+    margin: 4px 0;
+  }
+
+  /* 盤面サイズ（画面基準） */
+  .board-wrap {
+    width: 100%;
+    max-width: 100vw;
+    height: min(70vw, 320px);
+  }
+
+  /* 右パネルをフル幅に */
+  aside.panel {
+    width: 100%;
+    max-height: none;
+  }
+
+  /* ステータスを2列表示 */
+  .status {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 8px;
+    font-size: 13px;
+  }
+
+  /* 手駒 */
+  .hand-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .hand-row {
+    transform: scale(0.85);
+    transform-origin: left top;
+  }
+
+  /* ログを小さく */
+  .log {
+    max-height: 80px;
+    overflow-y: auto;
+    font-size: 12px;
+  }
+
+  /* チャット */
+  .chat-messages {
+    max-height: 140px;
+  }
+
+  .chat-input-row input {
+    font-size: 16px; /* iOS拡大防止 */
+  }
+
+  /* ボタン */
+  button {
+    padding: 10px 14px;
+    font-size: 15px;
+  }
+
+  /* 流れるコメント */
+  .flying-comment {
+    font-size: 18px;
+    animation-duration: 4s;
+  }
+}
+
+/* タッチ端末で hover 無効化 */
+@media (hover: none) {
+  button:hover {
+    background: inherit;
+  }
+}
+@media (max-width: 768px) {
+
+  main {
+    gap: 6px;
+    padding: 4px;
+  }
+
+  header {
+    padding: 4px 6px;
+  }
+
+  header h1 {
+    font-size: 16px;
+    margin: 2px 0;
+  }
+
+  .board-wrap {
+    width: 100%;
+    height: min(60vh, 300px);
+    max-height: 60vh;
+  }
+
+  
+  .log {
+    display: none;
+  }
+
+  .chat-messages {
+    max-height: 90px;
+    font-size: 12px;
+  }
+}
+@media (max-width: 768px) {
+  .hint {
+    display: none;
+  }
+}
+
