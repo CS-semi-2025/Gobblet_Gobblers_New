@@ -1,7 +1,7 @@
-// client.js (Three.js version - Multi-room ready)
+// client.js (Three.js version - Updated Post-game Logic)
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import confetti from 'canvas-confetti'; // ★追加: 紙吹雪用ライブラリ
+import confetti from 'canvas-confetti';
 
 // --- Socket.IO 接続 ---
 const socket = io();
@@ -30,31 +30,29 @@ const modalOverlay = document.getElementById('modalOverlay');
 const closeModalBtn = document.getElementById('closeModalBtn');
 const tabButtons = document.querySelectorAll('.tab-btn');
 const tabPanes = document.querySelectorAll('.tab-pane');
-const modalRestartBtn = document.getElementById('modalRestartBtn');
 const modalLeaveBtn = document.getElementById('modalLeaveBtn');
 const toggleHighlightBtn = document.getElementById('toggleHighlightBtn');
 
-// ★ここを追加: ホーム画面用ボタンの参照★
 const homeSettingsBtn = document.getElementById('homeSettingsBtn'); 
-const gameActionsTab = document.querySelector('.tab-btn[data-tab="tab-control"]'); // ゲーム設定タブボタン
-const gameActionsPane = document.getElementById('tab-control'); // ゲーム設定コンテンツパネル
+const gameActionsTab = document.querySelector('.tab-btn[data-tab="tab-control"]'); 
 
-
-// ★ 新規: リザルトUIの要素
+// ★ 新規: リザルトUIの要素 (改修)
 const resultOverlay = document.getElementById('resultOverlay');
 const resultTitle = document.getElementById('resultTitle');
 const resultMessage = document.getElementById('resultMessage');
 const resultContent = document.querySelector('.result-content');
-const resultRestartBtn = document.getElementById('resultRestartBtn');
-const resultCloseBtn = document.getElementById('resultCloseBtn');
+const resultStatus = document.getElementById('resultStatus'); // 待機メッセージ用
 
+const btnRematch = document.getElementById('btnRematch');
+const btnSpectate = document.getElementById('btnSpectate');
+const btnLeave = document.getElementById('btnLeave');
+const resultCloseBtn = document.getElementById('resultCloseBtn'); // 観戦者用閉じる
 
 // グローバル変数
 let mySlot = null;
-let myId = null;
 let state = null;
 let selectedPiece = null; 
-let currentRoomID = null; // 現在のルームIDを保持
+let currentRoomID = null;
 
 // 設定値
 let config = {
@@ -73,8 +71,8 @@ createRoomBtn.addEventListener("click", () => {
     const roomVal = roomInput.value.trim();
     const nameVal = homeNameInput.value.trim();
 
-    if (!roomVal || !nameVal) {
-        alert("ルーム名とプレイヤー名を入力して下さい");
+    if (!nameVal) {
+        alert("プレイヤー名を入力して下さい");
         return;
     }
 
@@ -87,7 +85,7 @@ createRoomBtn.addEventListener("click", () => {
         if (ack && (ack.ok || ack.slot)) {
             // 参加成功
             mySlot = ack.slot;
-            currentRoomID = roomVal;
+            currentRoomID = ack.roomID; // サーバーから確定したIDをもらう
             
             // 画面情報の更新
             currentRoomLabel.textContent = currentRoomID;
@@ -119,6 +117,8 @@ function toggleScreen(showGame) {
     } else {
         homeScreen.style.display = "flex";
         gameScreen.style.display = "none";
+        // 部屋から抜けた場合、URLパラメータも消すと親切
+        window.history.pushState({ path: window.location.pathname }, '', window.location.pathname);
     }
 }
 
@@ -126,7 +126,6 @@ function toggleScreen(showGame) {
 // --- ▼▼▼ Three.js セットアップ ▼▼▼ ---
 let scene, camera, renderer, raycaster, pointer;
 let controls;
-
 let boardGroup; 
 let pieceMeshes = []; 
 const cellObjects = []; 
@@ -194,10 +193,7 @@ function initThree() {
 
 function animate() {
     requestAnimationFrame(animate);
-
-    if (controls) {
-        controls.update(); 
-    }
+    if (controls) controls.update(); 
     renderer.render(scene, camera);
 }
 
@@ -207,21 +203,13 @@ const chatMessages = document.getElementById("chatMessages");
 const chatInput = document.getElementById("chatInput");
 const chatSendBtn = document.getElementById("chatSendBtn");
 
-// ==== 流れる応援コメント表示関数 ====
 function launchFlyingComment(text) {
   const el = document.createElement("div");
   el.className = "flying-comment";
   el.textContent = text;
-
-  // ランダム色
   el.style.color = randomColor();
-
-  // ランダム高さ
   el.style.top = `${Math.random() * 60 + 10}%`;
-
   document.body.appendChild(el);
-
-  // アニメ終了後削除
   setTimeout(() => el.remove(), 6000);
 }
 
@@ -232,7 +220,6 @@ function randomColor() {
   return `rgb(${r},${g},${b})`;
 }
 
-// === チャットログ表示 ===
 function appendChat(msg) {
   const time = new Date(msg.time).toLocaleTimeString();
   const div = document.createElement("div");
@@ -252,24 +239,21 @@ chatInput.addEventListener("keydown", e => {
   if (e.key === "Enter") chatSendBtn.onclick();
 });
 
-// === 受信時にチャット表示＋流れるコメント ===
 socket.on("chat_message", (msg) => {
   appendChat(msg);
   launchFlyingComment(msg.text);
 });
 
-// === cheer（応援コメント）受信 ===
 socket.on("cheer", (data) => {
   launchFlyingComment(`${data.name}: ${data.text}`);
 });
 
-// 初期履歴ロード
 socket.on("chat_init", (log) => {
   log.forEach(msg => appendChat(msg));
 });
 
 /**
- * 2. 3D盤面の構築
+ * 3D盤面の構築
  */
 function buildBoard3D() {
     boardGroup = new THREE.Group();
@@ -285,15 +269,12 @@ function buildBoard3D() {
     const lineColor = new THREE.Color(0xdde5ed);
     const lineMaterial = new THREE.MeshBasicMaterial({ color: lineColor });
     const lineThickness = 0.1;
-
-    // 縦線
     for (let i = 1; i < 3; i++) {
         const lineGeo = new THREE.BoxGeometry(lineThickness, 0.25, CELL_GAP * 3 + lineThickness * 2);
         const lineMesh = new THREE.Mesh(lineGeo, lineMaterial);
         lineMesh.position.set(i * CELL_GAP + BOARD_OFFSET - CELL_GAP / 2, 0.1, 0);
         boardGroup.add(lineMesh);
     }
-    // 横線
     for (let i = 1; i < 3; i++) {
         const lineGeo = new THREE.BoxGeometry(CELL_GAP * 3 + lineThickness * 2, 0.25, lineThickness);
         const lineMesh = new THREE.Mesh(lineGeo, lineMaterial);
@@ -304,7 +285,6 @@ function buildBoard3D() {
     // マス (透明)
     const cellGeo = new THREE.BoxGeometry(3, 0.1, 3);
     cellGeo.translate(0, 0.15, 0);
-
     const cellMat = new THREE.MeshBasicMaterial({ 
         color: 0xff0000, 
         transparent: true, 
@@ -339,7 +319,12 @@ function render(stateObj) {
     
     turnLabel.textContent = state.currentTurn || '—';
     gameStateLabel.textContent = state.winner ? `終了: ${state.winner}` : (state.started ? '進行中' : '待機中');
-    meLabel.textContent = mySlot ? `${mySlot}` : '未割当';
+    // ラベル更新: 観戦者の場合待機数なども表示できるがシンプルに
+    if (mySlot === 'spectator' && state.spectatorQueue) {
+        meLabel.textContent = `観戦 (待ち ${state.spectatorQueue.length}人)`;
+    } else {
+        meLabel.textContent = mySlot ? `${mySlot}` : '未割当';
+    }
 
     pieceMeshes.forEach(mesh => scene.remove(mesh));
     pieceMeshes = [];
@@ -353,13 +338,9 @@ function render(stateObj) {
                 for (let i = 0; i < stack.length; i++) {
                     const p = stack[i]; 
                     const pieceMesh = createPieceMesh(p.size, p.owner);
-
-                    // ★修正ポイント: 常に盤面の床上(0.1)を基準に配置する
-                    // Cylinderの中心Y座標 = (高さ / 2) + 盤面の高さオフセット(0.1)
                     const y = pieceMesh.geometry.parameters.height / 2 + 0.1;
                     
                     pieceMesh.position.set(x, y, z);
-                    
                     pieceMesh.userData = { 
                         type: 'piece', 
                         r, c, 
@@ -428,7 +409,6 @@ function onCanvasClick(event) {
             socket.emit('place_piece', payload, (ack) => {
                 if (ack && ack.error) addLog('エラー: ' + ack.error);
             });
-            addLog(`手駒を送信: ${selectedPiece.size} -> (${targetR},${targetC})`);
             clearSelection();
             return;
         }
@@ -449,7 +429,6 @@ function onCanvasClick(event) {
             socket.emit('place_piece', payload, (ack) => {
                 if (ack && ack.error) addLog('エラー: ' + ack.error);
             });
-            addLog(`盤上駒の移動を送信: (${selectedPiece.from.r},${selectedPiece.from.c}) -> (${targetR},${targetC})`);
             clearSelection();
             return;
         }
@@ -480,7 +459,6 @@ function clearSelection() {
 
 function onWindowResize() {
     if (boardWrap.clientWidth === 0) return;
-
     const width = boardWrap.clientWidth;
     const height = 500; 
     camera.aspect = width / height;
@@ -488,8 +466,6 @@ function onWindowResize() {
     renderer.setSize(width, height);
 }
 
-
-// --- 既存のSocket.IOロジック (DOM手駒・ログ) ---
 
 function addLog(s){
   const t = new Date().toLocaleTimeString();
@@ -516,7 +492,6 @@ function renderHandDOM(){
       wrapper.className = 'hand-piece';
       const piece = document.createElement('div');
       piece.className = `piece size-${size} color-${mySlot==='A'?'A':'B'}`;
-      piece.textContent = ''; 
       wrapper.appendChild(piece);
       wrapper.dataset.size = size;
       wrapper.addEventListener('click', (ev) => {
@@ -530,39 +505,23 @@ function renderHandDOM(){
   });
 }
 
-// --- モーダル関連イベント ---
-//内容変更
+// --- モーダル・UI関連 ---
 if (settingsBtn) {
     settingsBtn.addEventListener('click', () => {
-    console.log('ゲーム画面からモーダルを開きます');
-        // ゲーム操作タブを元に戻す
         if (gameActionsTab) gameActionsTab.style.display = 'block'; 
         modalOverlay.classList.remove('hidden');
-        // 環境設定タブ（tab-env）を強制的にアクティブにする
         const envTab = document.querySelector('.tab-btn[data-tab="tab-env"]');
         if (envTab) envTab.click();
     });
 }
-
-// ★ここを追加: ホーム画面用ボタン★
 if (homeSettingsBtn) {
     homeSettingsBtn.addEventListener('click', () => {
-        console.log('ホーム画面からモーダルを開きます');
-        
-        // ホーム画面で開いた場合、ゲーム操作タブとコンテンツを非表示にする
         if (gameActionsTab) gameActionsTab.style.display = 'none';
-        
-        // 非表示にしたコンテンツを非アクティブにする必要はないが、安全のため
-        // if (gameActionsPane) gameActionsPane.classList.remove('active');
-        
-        // 環境設定タブ（tab-env）を強制的にアクティブにする（非表示タブがアクティブにならないように）
         const envTab = document.querySelector('.tab-btn[data-tab="tab-env"]');
         if (envTab) envTab.click(); 
-
         modalOverlay.classList.remove('hidden');
     });
 }
-
 if (closeModalBtn) {
     closeModalBtn.addEventListener('click', () => {
         modalOverlay.classList.add('hidden');
@@ -575,7 +534,6 @@ if (modalOverlay) {
         }
     });
 }
-
 tabButtons.forEach(btn => {
     btn.addEventListener('click', () => {
         tabButtons.forEach(b => b.classList.remove('active'));
@@ -586,27 +544,14 @@ tabButtons.forEach(btn => {
         if (targetContent) targetContent.classList.add('active');
     });
 });
-
-if (modalRestartBtn) {
-    modalRestartBtn.addEventListener('click', () => {
-        socket.emit('restart_game', {}, (ack) => {
-            if (ack && ack.ok) addLog('再戦リクエスト送信');
-            else if (ack && ack.error) addLog('再戦失敗: ' + ack.error);
-        });
-        modalOverlay.classList.add('hidden');
-    });
-}
-
 if (modalLeaveBtn) {
     modalLeaveBtn.addEventListener('click', () => {
-        socket.disconnect();
-        modalOverlay.classList.add('hidden');
         if(confirm("退出してホームに戻りますか？")){
-            window.location.href = window.location.pathname; 
+            socket.disconnect(); // 簡易的な離脱
+            window.location.reload(); 
         }
     });
 }
-
 if (toggleHighlightBtn) {
     toggleHighlightBtn.addEventListener('click', () => {
         config.highlightMoves = !config.highlightMoves;
@@ -625,42 +570,99 @@ if (toggleHighlightBtn) {
     });
 }
 
-
-// --- ★追加: リザルト画面の処理 ---
+// --- ★ リザルト画面・終了後処理 ---
 function showResult(winner) {
     resultOverlay.classList.remove('hidden');
-    resultContent.classList.remove('lose'); // クラスリセット
+    resultContent.classList.remove('lose');
+    
+    // UI初期化
+    btnRematch.style.display = 'block';
+    btnSpectate.style.display = 'block';
+    btnLeave.style.display = 'block';
+    resultCloseBtn.style.display = 'none';
+    resultStatus.textContent = '';
+    resultStatus.className = 'status-msg';
+
+    btnRematch.disabled = false;
+    btnSpectate.disabled = false;
+    btnLeave.disabled = false;
 
     if (mySlot === 'spectator') {
         resultTitle.textContent = "GAME SET";
         resultMessage.textContent = `勝者: ${winner}`;
+        // 観戦者はボタン非表示で「閉じる」のみにする
+        btnRematch.style.display = 'none';
+        btnSpectate.style.display = 'none';
+        btnLeave.style.display = 'none';
+        resultCloseBtn.style.display = 'inline-block';
     } else if (winner === mySlot) {
-        // 勝ち
         resultTitle.textContent = "YOU WIN!";
         resultMessage.textContent = "おめでとうございます！";
-        fireConfetti(); // 紙吹雪発射！
+        fireConfetti();
     } else {
-        // 負け
         resultTitle.textContent = "YOU LOSE...";
         resultMessage.textContent = "ドンマイ！次は勝てます！";
         resultContent.classList.add('lose'); 
     }
 }
 
+function disableResultButtons(msg) {
+    btnRematch.disabled = true;
+    btnSpectate.disabled = true;
+    btnLeave.disabled = true;
+    resultStatus.textContent = msg;
+    resultStatus.classList.add('blink');
+}
+
+// 各ボタンのイベント
+if (btnRematch) {
+    btnRematch.onclick = () => {
+        socket.emit('post_game_decision', { decision: 'rematch' });
+        disableResultButtons('相手の選択を待っています...');
+    };
+}
+if (btnSpectate) {
+    btnSpectate.onclick = () => {
+        socket.emit('post_game_decision', { decision: 'spectate' });
+        disableResultButtons('相手の選択を待っています...');
+    };
+}
+if (btnLeave) {
+    btnLeave.onclick = () => {
+        socket.emit('post_game_decision', { decision: 'leave' });
+        disableResultButtons('退出処理中...');
+    };
+}
+if (resultCloseBtn) {
+    resultCloseBtn.onclick = () => {
+        resultOverlay.classList.add('hidden');
+    };
+}
+
+// サーバーから「ホームに戻れ」と言われた場合
+socket.on('redirect_home', () => {
+    // 退出完了、画面リロードまたはホーム表示
+    resultOverlay.classList.add('hidden');
+    toggleScreen(false); // ホーム画面へ
+    socket.disconnect(); // 一旦切断
+    window.location.reload(); // 状態クリーンアップのためリロード推奨
+});
+
+// 相手が決断したときの通知
+socket.on('opponent_decided', (data) => {
+    // 自分がまだ決めてない場合は特に何もしないか、あるいは「相手は準備完了」と出す
+    // ここでは自分が待機中ならメッセージ更新
+    if (btnRematch.disabled) {
+        resultStatus.textContent = '相手が選択しました。まもなく処理されます...';
+    }
+});
+
 function fireConfetti() {
     const count = 200;
-    const defaults = {
-        origin: { y: 0.7 }
-    };
-
+    const defaults = { origin: { y: 0.7 } };
     function fire(particleRatio, opts) {
-        confetti({
-            ...defaults,
-            ...opts,
-            particleCount: Math.floor(count * particleRatio)
-        });
+        confetti({ ...defaults, ...opts, particleCount: Math.floor(count * particleRatio) });
     }
-
     fire(0.25, { spread: 26, startVelocity: 55 });
     fire(0.2, { spread: 60 });
     fire(0.35, { spread: 100, decay: 0.91, scalar: 0.8 });
@@ -668,45 +670,20 @@ function fireConfetti() {
     fire(0.1, { spread: 120, startVelocity: 45 });
 }
 
-// リザルト画面のボタンイベント
-if (resultRestartBtn) {
-    resultRestartBtn.addEventListener('click', () => {
-        socket.emit('restart_game', {}, (ack) => {
-            if (ack && ack.ok) {
-                addLog('再戦リクエスト送信');
-                resultOverlay.classList.add('hidden'); 
-            }
-        });
-    });
-}
-
-if (resultCloseBtn) {
-    resultCloseBtn.addEventListener('click', () => {
-        resultOverlay.classList.add('hidden');
-    });
-}
-
-
 // --- Socketイベントリスナー ---
 socket.on('connect', () => {
-  myId = socket.id;
+  // myId = socket.id;
 });
-socket.on('init', (s) => {});
 socket.on('assign', (d) => {
     if (d && d.slot) {
-        mySlot = d.slot;   // ★これを追加
+        mySlot = d.slot;
         meLabel.textContent = mySlot;
         addLog(`(System) Role Assigned: ${d.slot}`);
-
-        // 状態がすでに来ていたら手駒再描画
-        if (state) {
-            render(state);
-        }
+        if (state) render(state);
     }
 });
 socket.on('start_game', (s) => {
-  // ゲーム開始時にリザルトが開いていたら閉じる
-  resultOverlay.classList.add('hidden');
+  resultOverlay.classList.add('hidden'); // 次のゲームが始まったら閉じる
   addLog('ゲーム開始！');
   clearSelection();
   render(s);
@@ -721,8 +698,6 @@ socket.on('game_over', (d) => {
   addLog('ゲーム終了: 勝者 = ' + d.winner);
   clearSelection();
   render(d.state);
-  
-  // ★リザルト演出呼び出し
   showResult(d.winner);
 });
 socket.on('disconnect', () => {
@@ -732,7 +707,5 @@ socket.on('disconnect', () => {
 // --- 実行開始 ---
 initThree(); 
 buildBoard3D(); 
-if (controls) {
-    controls.update(); 
-}
+if (controls) controls.update(); 
 renderer.render(scene, camera);

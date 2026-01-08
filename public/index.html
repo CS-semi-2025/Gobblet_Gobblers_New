@@ -22,7 +22,7 @@
       <header>
       <h1>Gobblet Gobblers (3D)</h1>
       <div class="controls">
-        <input id="nameInput" placeholder="あなたの名前" />
+        <input id="nameInput" placeholder="あなたの名前" readonly />
         <button id="settingsBtn" class="secondary">⚙️ 設定</button>
       </div>
     </header>
@@ -31,7 +31,6 @@
       <section class="board-wrap"></section>
 
       <div id="cheerLayer"></div>
-
 
       <aside class="panel">
         <div class="status">
@@ -44,7 +43,6 @@
         <div class="hand">
           <div><strong>手駒</strong></div>
           <div id="handContainer" class="hand-row"></div>
-          <div class="hint">（3D版）手駒をクリック → 盤面のマスをクリックで配置。盤上の自分の駒をクリック → 移動先のマスをクリックで移動。</div>
         </div>
 
         <div class="log" id="log"></div>
@@ -91,7 +89,6 @@
 
         <div id="tab-control" class="tab-pane">
           <p>対戦中の操作</p>
-          <button id="modalRestartBtn" class="action-btn">この対戦をやり直す</button>
           <button id="modalLeaveBtn" class="action-btn danger">退出する</button>
         </div>
 
@@ -112,10 +109,15 @@
   <div class="result-content">
     <h1 id="resultTitle">WIN!</h1>
     <p id="resultMessage">おめでとうございます！</p>
+    
     <div class="result-actions">
-      <button id="resultRestartBtn" class="action-btn">もう一度遊ぶ</button>
-      <button id="resultCloseBtn" class="secondary-btn">閉じる</button>
+      <button id="btnRematch" class="action-btn primary">再戦する</button>
+      <button id="btnSpectate" class="action-btn secondary-action">観戦に回る</button>
+      <button id="btnLeave" class="action-btn danger">退出して戻る</button>
+      <button id="resultCloseBtn" class="secondary-btn" style="display:none;">閉じる</button>
     </div>
+    
+    <div id="resultStatus" class="status-msg"></div>
   </div>
 </div>
 
