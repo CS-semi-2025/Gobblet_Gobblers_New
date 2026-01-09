@@ -28,7 +28,7 @@ function createNewGameState() {
       [[], [], []],
       [[], [], []]
     ],
-    players: { A: null, B: null },
+    players: { Blue: null, Orange: null },
     currentTurn: null,
     winner: null,
     started: false,
@@ -70,7 +70,7 @@ function checkWinner(board) {
 // ----------------- クライアント送信用の整形 -----------------
 function sanitizeState(state) {
   const players = {};
-  for (const k of ['A','B']) {
+  for (const k of ['Blue','Orange']) {
     const p = state.players[k];
     if (p) {
       players[k] = {
@@ -125,12 +125,12 @@ io.on("connection", (socket) => {
 
     // 4. プレイヤー割り当て logic
     let assigned = null;
-    if (!roomState.players.A) {
-      roomState.players.A = { id: socket.id, name, color: "blue", pieces: { small:2, medium:2, large:2 } };
-      assigned = "A";
-    } else if (!roomState.players.B) {
-      roomState.players.B = { id: socket.id, name, color: "orange", pieces: { small:2, medium:2, large:2 } };
-      assigned = "B";
+    if (!roomState.players.Blue) {
+      roomState.players.Blue = { id: socket.id, name, color: "blue", pieces: { small:2, medium:2, large:2 } };
+      assigned = "Blue";
+    } else if (!roomState.players.Orange) {
+      roomState.players.Orange = { id: socket.id, name, color: "orange", pieces: { small:2, medium:2, large:2 } };
+      assigned = "Orange";
     } else {
       assigned = "spectator";
     }
@@ -141,9 +141,9 @@ io.on("connection", (socket) => {
     socket.emit("assign", { slot: assigned });
 
     // 5. ゲーム開始判定
-    if (roomState.players.A && roomState.players.B) {
+    if (roomState.players.Blue && roomState.players.Orange) {
       if (!roomState.started && !roomState.winner) {
-          roomState.currentTurn = "A";
+          roomState.currentTurn = "Blue";
           roomState.started = true;
       }
       io.to(roomID).emit("start_game", sanitizeState(roomState));
@@ -166,7 +166,7 @@ io.on("connection", (socket) => {
     const roomState = rooms[roomID];
     const slot = socket.data.playerSlot;
 
-    if (slot !== "A" && slot !== "B") return ack({ error: "spectator" });
+    if (slot !== "Blue" && slot !== "Orange") return ack({ error: "spectator" });
     if (!roomState.started) return ack({ error: "not_started" });
     if (roomState.winner) return ack({ error: "game_over" });
     if (roomState.currentTurn !== slot) return ack({ error: "not_your_turn" });
@@ -199,7 +199,7 @@ io.on("connection", (socket) => {
             roomState.started = false;
             io.to(roomID).emit("game_over", { winner, state: sanitizeState(roomState) });
         } else {
-            roomState.currentTurn = (slot === "A") ? "B" : "A";
+            roomState.currentTurn = (slot === "Blue") ? "Orange" : "Blue";
             io.to(roomID).emit("update_state", sanitizeState(roomState));
         }
         if (ack) ack({ ok: true });
@@ -221,8 +221,8 @@ io.on("connection", (socket) => {
 
     // 送信者名の特定
     let name = "観戦者";
-    if (slot === "A" && roomState.players.A) name = roomState.players.A.name;
-    else if (slot === "B" && roomState.players.B) name = roomState.players.B.name;
+    if (slot === "Blue" && roomState.players.Blue) name = roomState.players.Blue.name;
+    else if (slot === "Orange" && roomState.players.Orange) name = roomState.players.Orange.name;
 
     const text = String(data?.text || "").slice(0, 200); // 200文字制限
     if (!text) return;
@@ -252,8 +252,8 @@ io.on("connection", (socket) => {
     const slot = socket.data.playerSlot;
 
     let name = "観戦者";
-    if (slot === "A" && roomState.players.A) name = roomState.players.A.name;
-    else if (slot === "B") name = roomState.players.B.name;
+    if (slot === "Blue" && roomState.players.Blue) name = roomState.players.Blue.name;
+    else if (slot === "Orange") name = roomState.players.Orange.name;
 
     const text = String(data?.text || "").slice(0, 50);
     if (!text) return;
@@ -280,11 +280,11 @@ io.on("connection", (socket) => {
       const roomState = rooms[roomID];
       // 状態リセット
       roomState.board = [[[],[],[]],[[],[],[]],[[],[],[]]];
-      if(roomState.players.A) roomState.players.A.pieces = { small:2, medium:2, large:2 };
-      if(roomState.players.B) roomState.players.B.pieces = { small:2, medium:2, large:2 };
-      roomState.currentTurn = "A";
+      if(roomState.players.Blue) roomState.players.Blue.pieces = { small:2, medium:2, large:2 };
+      if(roomState.players.Orange) roomState.players.Orange.pieces = { small:2, medium:2, large:2 };
+      roomState.currentTurn = "Blue";
       roomState.winner = null;
-      roomState.started = !!(roomState.players.A && roomState.players.B);
+      roomState.started = !!(roomState.players.Blue && roomState.players.Orange);
 
       io.to(roomID).emit("start_game", sanitizeState(roomState));
       if(ack) ack({ ok: true });
@@ -297,8 +297,8 @@ io.on("connection", (socket) => {
         const roomState = rooms[roomID];
         const slot = socket.data.playerSlot;
         
-        if (slot === "A") roomState.players.A = null;
-        if (slot === "B") roomState.players.B = null;
+        if (slot === "Blue") roomState.players.Blue = null;
+        if (slot === "Orange") roomState.players.Orange = null;
         
         roomState.started = false;
 
