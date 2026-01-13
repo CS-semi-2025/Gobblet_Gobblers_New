@@ -319,41 +319,42 @@ main{ display:flex; gap:16px; margin-top:12px; }
 /* style.css 修正版 */
 
 .cutin-overlay {
-   position: fixed; /* absolute から fixed に変更して画面全体を覆う */
-   top: 0;
-   left: 0;
-   width: 100%;
-   height: 100%; /* 高さを指定しないと表示領域が0になります */
-   display: flex;
-   justify-content: center;
-   align-items: center;
-   background: rgba(0,0,0,0.2);
-   z-index: 1000;
-   pointer-events: none;
-   transition: opacity 0.4s;
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.1);
+  z-index: 2000;
+  pointer-events: none;
 }
 
 .cutin-content {
-  background: white;
-  padding: 30px 60px;
-  border-radius: 12px; /* 角丸を追加して見栄えを良くする */
-  box-shadow: 0 10px 30px rgba(0,0,0,0.2); /* 影の調整 */
+  background: #fff;
+  padding: 20px 80px;
+  border-radius: 50px; /* 丸みを帯びさせる */
+  border: 8px solid; /* 色はJSの文字色に合わせるために currentColor を使う手もあり */
+  box-shadow: 
+    0 20px 0 rgba(0,0,0,0.1), /* 厚み */
+    0 30px 20px rgba(0,0,0,0.2); /* 影 */
   transform: scale(0);
-  /* 修正: カンマ(,)の打ち間違いを修正 (0,885 -> 0.885 など) */
-  animation: cutinPop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  animation: stampIn 0.9s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
 }
 
 .cutin-content h2 {
-   margin: 0;
-   font-size: 2.5rem;
-   font-weight: 900;
-   white-space: nowrap;
+  margin: 0;
+  font-size: 3.5rem;
+  font-weight: 900;
+  /* 文字の縁取り（ストローク）をつけるとポップになります */
+  -webkit-text-stroke: 2px #fff; 
+  paint-order: stroke fill;
 }
 
-/* アニメーション定義の修正は不要ですが、念のため確認 */
-@keyframes cutinPop {
-   0% { transform: scale(0.5); opacity: 0; }
-   100% { transform: scale(1); opacity: 1; }
+@keyframes stampIn {
+  0% { transform: scale(3); opacity: 0; }
+  60% { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 /* 既存の .hidden クラスを使用するため、ここは変更なしでOK */

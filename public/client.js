@@ -1214,9 +1214,11 @@ socket.on('start_game', (s) => {
    if(s.currentTurn === mySlot) {
     cutinText.textContent = "あなたが【先攻】です！";
     cutinText.style.color = "#ff4757"; // 先攻の色
+    turnCutIn.querySelector('.cutin-content').style.borderColor = "#ff4757";
    } else {
     cutinText.textContent = "あなたは【後攻】です";
     cutinText.style.color = "#2ed573"; // 後攻の色
+    turnCutIn.querySelector('.cutin-content').style.borderColor = "#2ed573";
    }
 
    // 2秒後に自動で消す
