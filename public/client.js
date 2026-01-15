@@ -233,8 +233,7 @@ function initThree() {
     animate();
 
     if (isMobile && controls) {
-    controls.enableRotate = false;
-    controls.enableZoom = false;
+
     controls.enablePan = false;
 }
 
@@ -263,9 +262,9 @@ function launchFlyingComment(text) {
 }
 
 function randomColor() {
-  const r = Math.floor(Math.random() * 200 + 55); 
-  const g = Math.floor(Math.random() * 200 + 55);
-  const b = Math.floor(Math.random() * 200 + 55);
+  const r = Math.floor(Math.random() * 130 + 50); 
+  const g = Math.floor(Math.random() * 130 + 50);
+  const b = Math.floor(Math.random() * 130 + 50);
   return `rgb(${r},${g},${b})`;
 }
 

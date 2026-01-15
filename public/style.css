@@ -385,16 +385,7 @@ main{ display:flex; gap:16px; margin-top:12px; }
   }
 
   /* 手駒 */
-  .hand-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .hand-row {
-    transform: scale(0.85);
-    transform-origin: left top;
-  }
+  
 
   /* ログを小さく */
   .log {
@@ -457,6 +448,7 @@ main{ display:flex; gap:16px; margin-top:12px; }
   .log {
     display: none;
   }
+  
 
   .chat-messages {
     max-height: 90px;
@@ -468,4 +460,14 @@ main{ display:flex; gap:16px; margin-top:12px; }
     display: none;
   }
 }
+/* ===== スマホ版で手駒を非表示 ===== */
+@media (max-width: 768px) {
+  .hand {
+    display: none !important;
+  }
+  .hand-row {
+    display: none !important;
+  }
+}
+
 
