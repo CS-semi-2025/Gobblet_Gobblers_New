@@ -92,8 +92,34 @@ main{ display:flex; gap:16px; margin-top:12px; }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 20px;
-  height: 80vh;
+  gap: 30px;
+  min-height: 85vh; /* 少し高さを出してゆったりさせる */
+  width: 100%;
+  
+  /* 保存した画像をここに指定 */
+  background-image: url('home-bg.png'); 
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  
+  border-radius: 12px; /* containerの角丸に合わせる */
+  position: relative;
+  overflow: hidden;
+  box-shadow: inset 0 0 100px rgba(0,0,0,0.2); /* 画像の縁を少し暗くして落ち着かせる */
+}
+
+#homeScreen h1 {
+  font-size: 3.5rem;
+  margin: 0;
+  color: #fff;
+  text-transform: uppercase;
+  font-family: 'Arial Black', sans-serif;
+  letter-spacing: 2px;
+  /* 視認性を確保するための二重の影 */
+  text-shadow: 
+    3px 3px 0px #ef6c00, 
+    0px 0px 20px rgba(0,0,0,0.4);
+  z-index: 1;
 }
 
 .home-panel {
@@ -104,19 +130,43 @@ main{ display:flex; gap:16px; margin-top:12px; }
 }
 
 .home-panel input {
-  padding: 8px;
-  border-radius: 6px;
-  border: 1px solid #ddd;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.5);
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 1rem;
+  outline: none;
+  transition: all 0.3s;
 }
 
+.home-panel input:focus {
+  border-color: #ef6c00;
+  box-shadow: 0 0 0 3px rgba(239, 108, 0, 0.2);
+}
+
+/* 入室ボタンをより目立たせる */
 .home-panel button {
-  padding: 8px;
+  padding: 14px;
   border: none;
-  border-radius: 6px;
-  background: var(--accent);
+  border-radius: 10px;
+  background: linear-gradient(135deg, #ef6c00, #ff9d00);
   color: white;
+  font-size: 1.1rem;
   font-weight: bold;
   cursor: pointer;
+  box-shadow: 0 4px 15px rgba(239, 108, 0, 0.3);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.home-panel button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(239, 108, 0, 0.4);
+}
+
+.home-panel button.secondary {
+  background: rgba(100, 116, 139, 0.8);
+  font-size: 0.9rem;
+  margin-top: 5px;
 }
 
 /* チャット画面 */
@@ -344,6 +394,16 @@ main{ display:flex; gap:16px; margin-top:12px; }
 }
 
 /* ===== スマホ対応：完全版 ===== */
+@media (max-width: 768px) {
+  #homeScreen h1 {
+    font-size: 2.2rem;
+  }
+  .home-panel {
+    width: 85%;
+    padding: 20px;
+  }
+}
+
 @media (max-width: 768px) {
 
   /* 全体レイアウト */
