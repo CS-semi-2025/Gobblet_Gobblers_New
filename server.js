@@ -195,6 +195,13 @@ io.on("connection", (socket) => {
             if (!canPlaceAt(roomState.board, to.r, to.c, top.size)) throw new Error("illegal");
 
             srcStack.pop();
+            let winner = checkWinner(roomState.board);
+            if (winner) {
+                roomState.winner = winner;
+                roomState.started = false;
+                io.to(roomID).emit("game_over", { winner, state: sanitizeState(roomState) });
+                return; 
+            }
             roomState.board[to.r][to.c].push(top);
         }
 
