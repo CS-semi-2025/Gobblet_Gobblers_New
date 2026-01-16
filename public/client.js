@@ -234,8 +234,6 @@ function initThree() {
     animate();
 
     if (isMobile && controls) {
-    controls.enableRotate = false;
-    controls.enableZoom = false;
     controls.enablePan = false;
 }
 
