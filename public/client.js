@@ -1,7 +1,11 @@
 // client.js (Three.js version - Multi-room ready)
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+<<<<<<< Updated upstream
 import confetti from 'canvas-confetti'; // ★追加: 紙吹雪用ライブラリ
+=======
+import confetti from 'canvas-confetti'; 
+>>>>>>> Stashed changes
 
 // --- Socket.IO 接続 ---
 const socket = io();
@@ -23,7 +27,8 @@ const currentRoomLabel = document.getElementById('currentRoomLabel');
 const gameNameInput = document.getElementById('nameInput');
 const boardWrap = document.querySelector('.board-wrap');
 const handContainer = document.getElementById('handContainer');
-
+const turnCutIn = document.getElementById('turnCutIn');
+const cutinText = document.getElementById('cutinText');
 // モーダルUI用の要素
 const settingsBtn = document.getElementById('settingsBtn');
 const modalOverlay = document.getElementById('modalOverlay');
@@ -54,7 +59,43 @@ let mySlot = null;
 let myId = null;
 let state = null;
 let selectedPiece = null; 
+<<<<<<< Updated upstream
 let currentRoomID = null; // 現在のルームIDを保持
+=======
+let currentRoomID = null; 
+
+let handMeshes = []; 
+const HAND_Z_A = 9;   
+const HAND_Z_B = -9;  
+const HAND_X_START = -7.0; // 広げるために左へずらす
+const HAND_X_GAP = 2.5;    // 間隔を広げる
+let lastSelectedHandX = 0; // 追加: アニメーション開始位置の記憶用
+// --- 修正: 手駒スロット管理用の変数 ---
+const handSlots = { A: [], B: [] }; // スロット情報 { mesh, size, active, slotId } を格納
+let isHandInitialized = false;      // 初期化フラグ
+let lastPlayedSlotId = null;        // 最後に操作した手駒のID（どの場所を消すか判定用）
+// --- 音声管理 ---
+const audioFiles = {
+    bgm: new Audio('assets/bgm.mp3'),
+    select: new Audio('assets/select.mp3'),
+    place: new Audio('assets/place.mp3'),
+    win: new Audio('assets/win.mp3'),
+    lose: new Audio('assets/lose.mp3')
+};
+
+// BGMはループ再生
+audioFiles.bgm.loop = true;
+audioFiles.bgm.volume = 0.3; 
+const seKeys = ['select', 'place', 'win', 'lose'];
+seKeys.forEach(key => audioFiles[key].volume = 0.5);
+
+function playSE(key) {
+    if (audioFiles[key]) {
+        audioFiles[key].currentTime = 0; 
+        audioFiles[key].play().catch(() => {}); 
+    }
+}
+>>>>>>> Stashed changes
 
 // 設定値
 let config = {
@@ -331,9 +372,114 @@ function createPieceMesh(size, owner) {
     const material = new THREE.MeshStandardMaterial({ color: color });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.castShadow = true;
+<<<<<<< Updated upstream
     return mesh;
 }
 
+=======
+    if (owner === 'A') {
+        mesh.rotation.y = 0; // 奥を向く（テクスチャの貼り方次第で Math.PI か 0 か調整してください）
+    } else {
+        mesh.rotation.y = Math.PI; // 手前を向く
+    }
+    return mesh;
+}
+
+// 手駒スロットを初期化する関数（固定配置）
+function initHandSlots() {
+    if (isHandInitialized) return;
+
+    ['A', 'B'].forEach(owner => {
+        const z = (owner === 'A') ? HAND_Z_A : HAND_Z_B;
+        let x = HAND_X_START;
+
+        // 固定順序: 大, 大, 中, 中, 小, 小
+        const sizes = ['large', 'large', 'medium', 'medium', 'small', 'small'];
+
+        sizes.forEach((size, idx) => {
+            // メッシュ作成
+            const mesh = createPieceMesh(size, owner);
+            mesh.position.set(x, 0.1, z);
+            
+            // IDと情報を埋め込む
+            mesh.userData = { type: 'hand', owner, size, slotId: idx }; 
+            
+            // 最初は非表示にしておく（renderで同期する）
+            mesh.visible = false;
+            
+            scene.add(mesh);
+            
+            // 管理リストに追加
+            handSlots[owner].push({
+                mesh: mesh,
+                size: size,
+                slotId: idx
+            });
+            
+            // Raycaster判定用リストにも追加
+            handMeshes.push(mesh); 
+
+            // 座標計算
+            x += HAND_X_GAP;
+            if (idx % 2 === 1) x += 0.5; // サイズごとの区切り
+        });
+    });
+
+    isHandInitialized = true;
+}
+
+// --- アニメーション移動ヘルパー (GSAP) ---
+// --- アニメーション移動ヘルパー (GSAP) ---
+function animateJump(mesh, targetX, targetZ, onComplete) {
+    // 現在位置
+    const startX = mesh.position.x;
+    const startZ = mesh.position.z;
+    const dist = Math.sqrt((targetX - startX)**2 + (targetZ - startZ)**2);
+    
+    // ★修正ポイント: 移動距離が短い場合でも、必ず地面(Y=0.1)に着地させる
+    if (dist < 0.1) {
+        mesh.position.set(targetX, 0.1, targetZ); // ← これを追加！強制的に着地させる
+        if(onComplete) onComplete();
+        return;
+    }
+
+    // ジャンプの高さ (距離に応じて高くする)
+    const jumpHeight = Math.max(2, dist * 0.5);
+
+    // X, Z は直線移動
+    if (typeof gsap !== 'undefined') {
+        gsap.to(mesh.position, {
+            duration: 0.6,
+            x: targetX,
+            z: targetZ,
+            ease: "power1.inOut"
+        });
+
+        const tl = gsap.timeline({
+            onComplete: () => {
+                playSE('place'); // 着地音
+                if (onComplete) onComplete();
+            }
+        });
+
+        // Y は放物線 (上がって下がる) + バウンド
+        tl.to(mesh.position, {
+            duration: 0.3,
+            y: jumpHeight,
+            ease: "power2.out"
+        }).to(mesh.position, {
+            duration: 0.3,
+            y: 0.1, // ここで着地
+            ease: "bounce.out" 
+        });
+    } else {
+        // GSAPがない場合のフォールバック
+        mesh.position.set(targetX, 0.1, targetZ);
+    }
+}
+
+// --- メイン描画ループ (アニメーション対応版) ---
+>>>>>>> Stashed changes
 function render(stateObj) {
     state = stateObj;
     
@@ -373,7 +519,130 @@ function render(stateObj) {
             }
         }
     }
+<<<<<<< Updated upstream
     renderHandDOM();
+=======
+
+    // 2. 既存メッシュのプールを作成（再利用のため）
+    const pool = { 'A-small': [], 'A-medium': [], 'A-large': [], 'B-small': [], 'B-medium': [], 'B-large': [] };
+    
+    pieceMeshes.forEach(mesh => {
+        const key = `${mesh.userData.owner}-${mesh.userData.size}`;
+        if (pool[key]) pool[key].push(mesh);
+    });
+
+    // --- 3. 次フレーム用のメッシュリスト ---
+    const nextPieceMeshes = [];
+    const piecesToMoveOrCreate = []; // まだメッシュが決まっていない駒リスト
+
+    // 【ステップA】 すでにその場所にある駒（動かない駒）を先に確保する
+    neededPieces.forEach(pData => {
+        const key = `${pData.owner}-${pData.size}`;
+        let foundIndex = -1;
+
+        if (pool[key] && pool[key].length > 0) {
+            // プールの中から「位置がほぼ同じ（動いていない）」メッシュを探す
+            foundIndex = pool[key].findIndex(m => {
+                const distSq = (m.position.x - pData.targetX)**2 + (m.position.z - pData.targetZ)**2;
+                return distSq < 0.01; // 誤差許容範囲
+            });
+        }
+
+        if (foundIndex !== -1) {
+            // 見つかった！ -> そのまま使う（キープ）
+            const mesh = pool[key][foundIndex];
+            pool[key].splice(foundIndex, 1); // プールから削除（他に使わせない）
+
+            // データの更新
+            mesh.userData.r = pData.r;
+            mesh.userData.c = pData.c;
+            mesh.userData.isTop = pData.isTop;
+            mesh.userData.owner = pData.owner;
+            mesh.userData.size = pData.size;
+            mesh.userData.type = 'piece';
+
+            // その場に固定（アニメーション関数を通すが距離0なので即座にセットされる）
+            animateJump(mesh, pData.targetX, pData.targetZ);
+            nextPieceMeshes.push(mesh);
+        } else {
+            // その場にメッシュがない -> 「移動してきた」か「新しく置かれた」駒
+            piecesToMoveOrCreate.push(pData);
+        }
+    });
+
+    // 【ステップB】 残りの駒（移動 or 新規）に対して、一番近いメッシュを割り当てる
+    piecesToMoveOrCreate.forEach(pData => {
+        const key = `${pData.owner}-${pData.size}`;
+        let mesh;
+
+        // 残っているプールから一番近いメッシュを探す
+        let bestIndex = -1;
+        let minDist = Infinity;
+
+        if (pool[key] && pool[key].length > 0) {
+            pool[key].forEach((m, idx) => {
+                const d = (m.position.x - pData.targetX)**2 + (m.position.z - pData.targetZ)**2;
+                if (d < minDist) {
+                    minDist = d;
+                    bestIndex = idx;
+                }
+            });
+        }
+
+        if (bestIndex !== -1) {
+            // 既存メッシュを再利用（これが本当の「移動」）
+            mesh = pool[key][bestIndex];
+            pool[key].splice(bestIndex, 1);
+        } else {
+            // 新規作成（手駒から置かれた）
+            mesh = createPieceMesh(pData.size, pData.owner);
+            scene.add(mesh);
+            
+            // 出現位置の決定
+            let startX = pData.targetX; 
+            const startZ = (pData.owner === 'A') ? HAND_Z_A : HAND_Z_B;
+
+            if (pData.owner === mySlot && lastSelectedHandX !== 0) {
+                // 自分の手駒から
+                startX = lastSelectedHandX;
+            } else if (pData.owner !== mySlot) {
+                // 相手の手駒から（ランダム位置）
+                startX = (Math.random() - 0.5) * 8; 
+            }
+            mesh.position.set(startX, 0.1, startZ);
+        }
+
+        // データの更新
+        mesh.userData.r = pData.r;
+        mesh.userData.c = pData.c;
+        mesh.userData.isTop = pData.isTop;
+        mesh.userData.owner = pData.owner;
+        mesh.userData.size = pData.size;
+        mesh.userData.type = 'piece';
+
+        // アニメーション実行
+        animateJump(mesh, pData.targetX, pData.targetZ);
+
+        nextPieceMeshes.push(mesh);
+    });
+
+    // 4. 余ったメッシュ（取られた駒など）を削除
+    Object.values(pool).forEach(list => {
+        list.forEach(mesh => {
+            if (typeof gsap !== 'undefined') {
+                gsap.to(mesh.scale, {
+                    duration: 0.3, x: 0, y: 0, z: 0,
+                    onComplete: () => scene.remove(mesh)
+                });
+            } else {
+                scene.remove(mesh);
+            }
+        });
+    });
+
+    pieceMeshes = nextPieceMeshes;
+    renderHands3D(state.players);
+>>>>>>> Stashed changes
 }
 
 function onCanvasClick(event) {
@@ -497,6 +766,7 @@ function addLog(s){
 }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
+<<<<<<< Updated upstream
 function renderHandDOM(){
   handContainer.innerHTML = '';
   if (!state || !mySlot || !state.players || mySlot === 'spectator') return;
@@ -526,6 +796,93 @@ function renderHandDOM(){
         addLog(`手駒選択: ${size}`);
       });
       handContainer.appendChild(wrapper);
+=======
+function renderHandDOM() {
+    handContainer.innerHTML = ''; 
+    // ヒントテキストなどは残してもいいが、今回は3Dで完結させる
+}
+
+// 3D手駒を描画・管理する関数
+// 3D手駒を描画・管理する関数（スロット制御版）
+function renderHands3D(players) {
+    // まだ初期化してなければ作成
+    if (!isHandInitialized) initHandSlots();
+
+    if (!players) return;
+
+    ['A', 'B'].forEach(owner => {
+        const pData = players[owner];
+        if (!pData) return;
+
+        // サイズごとに同期処理
+        ['large', 'medium', 'small'].forEach(size => {
+            const serverCount = pData.pieces[size] || 0;
+            
+            // このサイズに該当するスロットを取得
+            const slots = handSlots[owner].filter(s => s.size === size);
+            
+            // 現在表示されているスロットを取得
+            const visibleSlots = slots.filter(s => s.mesh.visible);
+            
+            const diff = visibleSlots.length - serverCount;
+
+            if (diff > 0) {
+                // 表示が多すぎる＝駒を使ったので、diff個だけ消す
+                // ★ここがポイント: 「最後にクリックした場所」を優先して消す
+                
+                let hiddenCount = 0;
+                
+                // 1. 自分が操作した駒があればそれを消す
+                if (owner === mySlot && lastPlayedSlotId !== null) {
+                    const target = visibleSlots.find(s => s.slotId === lastPlayedSlotId);
+                    if (target) {
+                        target.mesh.visible = false;
+                        hiddenCount++;
+                        lastPlayedSlotId = null; // 使い終わったらリセット
+                    }
+                }
+
+                // 2. まだ消す必要があれば、右側（IDが大きい方）から順に消す（相手の動きなど）
+                // ※配列を逆順にしてvisibleなものを消していく
+                for (let i = visibleSlots.length - 1; i >= 0; i--) {
+                    if (hiddenCount >= diff) break;
+                    if (visibleSlots[i].mesh.visible) { // まだ消えてなければ
+                        visibleSlots[i].mesh.visible = false;
+                        hiddenCount++;
+                    }
+                }
+
+            } else if (diff < 0) {
+                // 表示が足りない＝リセットなどで駒が戻ってきた
+                // 左側（IDが小さい方）から順に復活させる
+                let showCount = 0;
+                const needed = -diff; // 正の値に
+                
+                for (let i = 0; i < slots.length; i++) {
+                    if (showCount >= needed) break;
+                    if (!slots[i].mesh.visible) {
+                        slots[i].mesh.visible = true;
+                        showCount++;
+                    }
+                }
+            }
+            
+            // 選択状態のハイライト更新
+            if (selectedPiece && selectedPiece.from.type === 'hand') {
+                // 選択中のサイズで、表示されているもののうち、クリックしたもの(lastSelectedHandXに近いもの)を光らせる
+                // 簡易的に「選択サイズで、表示されている最初のもの」を光らせる（または厳密にID管理してもよい）
+                const target = slots.find(s => s.mesh.visible && s.size === selectedPiece.size);
+                // ※厳密にはクリックしたその個体を光らせたいが、データ構造上 selectedPiece に ID がないので
+                //  操作感としては「そのサイズを持っている」ことがわかればOK
+                //  （もし厳密にするなら selectedPiece に slotId を持たせる修正が必要）
+            }
+        });
+    });
+    
+    // ハイライトの再適用（メッシュが変わったわけではないので、既存のままでもおおよそ動くが念のため）
+    if (selectedPiece && selectedPiece.from.type === 'hand' && selectedMesh) {
+         // すでに光っていればそのまま
+>>>>>>> Stashed changes
     }
   });
 }
@@ -704,6 +1061,18 @@ socket.on('assign', (d) => {
         mySlot = d.slot;   // ★これを追加
         meLabel.textContent = mySlot;
         addLog(`(System) Role Assigned: ${d.slot}`);
+<<<<<<< Updated upstream
+=======
+        
+        // ★追加: Player Bならカメラを反対側に移動
+        if (mySlot === 'B') {
+            camera.position.set(0, 15, -18); // Zをマイナスに
+            camera.lookAt(0, 0, 0);
+        } else {
+            camera.position.set(0, 15, 18); // Aなら定位置
+            camera.lookAt(0, 0, 0);
+        }
+>>>>>>> Stashed changes
 
         // 状態がすでに来ていたら手駒再描画
         if (state) {
@@ -717,6 +1086,26 @@ socket.on('start_game', (s) => {
   addLog('ゲーム開始！');
   clearSelection();
   render(s);
+
+   // --- カットイン表示処理 ---
+   
+  if(mySlot) {
+   turnCutIn.classList.remove('hidden');
+   if(s.currentTurn === mySlot) {
+    cutinText.textContent = "あなたが【先攻】です！";
+    cutinText.style.color = "#ff4757"; // 先攻の色
+    turnCutIn.querySelector('.cutin-content').style.borderColor = "#ff4757";
+   } else {
+    cutinText.textContent = "あなたは【後攻】です";
+    cutinText.style.color = "#2ed573"; // 後攻の色
+    turnCutIn.querySelector('.cutin-content').style.borderColor = "#2ed573";
+   }
+
+   // 2秒後に自動で消す
+   setTimeout(() => {
+     turnCutIn.classList.add('hidden');
+   }, 2000);
+ }
 });
 socket.on('update_state', (s) => {
   render(s); 
