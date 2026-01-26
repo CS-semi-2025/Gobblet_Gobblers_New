@@ -249,6 +249,25 @@ function animate() {
     if (controls) controls.update(); 
     renderer.render(scene, camera);
 }
+const errorPopup = document.getElementById("errorPopup");
+const errorPopupText = document.getElementById("errorPopupText");
+
+function showPopup(msg) {
+  if (!errorPopup || !errorPopupText) return;
+
+  errorPopup.classList.remove("hidden");
+  errorPopupText.textContent = msg;
+
+  // エラーっぽい色にする
+  errorPopupText.style.color = "#ff4757";
+  errorPopup.querySelector(".cutin-content").style.borderColor = "#ff4757";
+
+  setTimeout(() => {
+    errorPopup.classList.add("hidden");
+  }, 2000);
+}
+
+
 
 
  // --- チャットメッセージ処理 ---
@@ -267,9 +286,9 @@ function launchFlyingComment(text) {
 }
 
 function randomColor() {
-  const r = Math.floor(Math.random() * 200 + 55); 
-  const g = Math.floor(Math.random() * 200 + 55);
-  const b = Math.floor(Math.random() * 200 + 55);
+  const r = Math.floor(Math.random() * 150 + 55); 
+  const g = Math.floor(Math.random() * 150 + 55);
+  const b = Math.floor(Math.random() * 150 + 55);
   return `rgb(${r},${g},${b})`;
 }
 
@@ -873,7 +892,12 @@ function onCanvasClick(event) {
                 to: { r: targetR, c: targetC } 
             };
             socket.emit('place_piece', payload, (ack) => {
-                if (ack && ack.error) addLog('エラー: ' + ack.error);
+                if (ack && ack.error) {
+                    showPopup('エラー: ' + ack.error);
+                    addLog('エラー: ' + ack.error);
+                    return;
+                }
+                clearSelection();
             });
             addLog(`手駒を送信: ${selectedPiece.size} -> (${targetR},${targetC})`);
             clearSelection();
@@ -894,7 +918,12 @@ function onCanvasClick(event) {
                 to: { r: targetR, c: targetC } 
             };
             socket.emit('place_piece', payload, (ack) => {
-                if (ack && ack.error) addLog('エラー: ' + ack.error);
+                if (ack && ack.error) {
+                    showPopup('エラー: ' + ack.error);
+                    addLog('エラー: ' + ack.error);
+                    return;
+                }
+                clearSelection();
             });
             addLog(`盤上駒の移動を送信: (${selectedPiece.from.r},${selectedPiece.from.c}) -> (${targetR},${targetC})`);
             clearSelection();

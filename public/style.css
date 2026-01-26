@@ -2,8 +2,7 @@
 :root {
   --accent: #2b6cb0;
   --muted: #64748b;
-  --danger: #ef4444;
-  --system: #d97706; /* システムメッセージ用 */
+  --system: #d97706; /* システムメッセージ用カラー */
 }
 body{
   font-family: system-ui, -apple-system, "Noto Sans JP", "Hiragino Kaku Gothic ProN", Roboto, sans-serif;
@@ -507,6 +506,7 @@ main{ display:flex; gap:16px; margin-top:12px; }
   main {
     display: flex;
     flex-direction: column;
+    align-items: center; /* ★中央寄せ */
     gap: 8px;
   }
 
@@ -527,10 +527,20 @@ main{ display:flex; gap:16px; margin-top:12px; }
     height: min(70vw, 320px);
   }
 
-  /* 右パネルをフル幅に */
+  /* 右パネル(aside)を中央に置く */
   aside.panel {
     width: 100%;
+    max-width: 520px;
+    margin: 0 auto;
     max-height: none;
+    box-sizing: border-box;
+    overflow-x: hidden;
+  }
+  
+  aside.panel .status,
+  aside.panel .hand,
+  aside.panel .chat-box {
+    width: 100%;
   }
 
   /* ステータスを2列表示 */
@@ -539,6 +549,7 @@ main{ display:flex; gap:16px; margin-top:12px; }
     grid-template-columns: 1fr 1fr;
     gap: 4px 8px;
     font-size: 13px;
+    box-sizing: border-box;
   }
 
   /* 手駒 */
@@ -546,11 +557,8 @@ main{ display:flex; gap:16px; margin-top:12px; }
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-  }
-
-  .hand-row {
     transform: scale(0.85);
-    transform-origin: left top;
+    transform-origin: center top; /* 中央基準 */
   }
 
   /* ログを小さく */
@@ -565,8 +573,35 @@ main{ display:flex; gap:16px; margin-top:12px; }
     max-height: 140px;
   }
 
+  .chat-input-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 6px;
+  }
+
   .chat-input-row input {
+    flex: 1;
+    min-width: 0; 
+    padding: 6px;
+    border-radius: 6px;
+    border: 1px solid #ddd;
     font-size: 16px; /* iOS拡大防止 */
+    box-sizing: border-box;
+  }
+  
+  #chatSendBtn {
+    width: auto;
+    flex: 0 0 auto;
+    padding: 10px 12px;
+    white-space: nowrap;
+    border-radius: 6px;
+    border: none;
+    background: var(--accent);
+    color: white;
+    cursor: pointer;
   }
 
   /* ボタン */

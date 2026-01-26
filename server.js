@@ -1,4 +1,4 @@
-// server.js (Handling Player Leave, Auto-Promotion, Board Reset)
+// server.js (Queue-based Spectator & Two-way Decision System)
 import express from "express";
 import http from "http";
 import { Server as IOServer } from "socket.io";
@@ -177,27 +177,33 @@ function handlePlayerLeave(roomID, socketID) {
 }
 
 // ----------------- 次のゲームの解決ロジック (通常終了時用) -----------------
+// 両プレイヤーの意思決定が出揃った時に呼び出す
 function resolveNextGame(roomID) {
     const room = rooms[roomID];
     if (!room) return;
 
+    // 現在のプレイヤー情報
     const pBlue = room.players.Blue;
     const pOrange = room.players.Orange;
     const dBlue = room.decisions.Blue;
     const dOrange = room.decisions.Orange;
 
-    // Blue処理
+    // 1. 各プレイヤーの処遇を決定
+    // Blueの処理
     if (pBlue) {
         if (dBlue === 'leave') {
             room.players.Blue = null;
         } else if (dBlue === 'spectate') {
+            // 観戦者列の最後尾へ
             room.spectators.push({ id: pBlue.id, name: pBlue.name });
             room.players.Blue = null;
+            // クライアントへ役割変更通知
             io.to(pBlue.id).emit("assign", { slot: "spectator" });
         }
+        // 'rematch' ならそのまま room.players.Blue に残る
     }
 
-    // Orange処理
+    // Orangeの処理
     if (pOrange) {
         if (dOrange === 'leave') {
             room.players.Orange = null;
@@ -208,34 +214,42 @@ function resolveNextGame(roomID) {
         }
     }
 
-    // 補充
+    // 2. 空いた席を観戦者キューの先頭から埋める
     ['Blue', 'Orange'].forEach(slot => {
         if (!room.players[slot]) {
             if (room.spectators.length > 0) {
+                // 先頭の人を取り出す
                 const nextUser = room.spectators.shift();
+                const color = (slot === 'Blue') ? 'blue' : 'orange';
+                
                 room.players[slot] = {
                     id: nextUser.id,
                     name: nextUser.name,
-                    color: (slot === 'Blue' ? 'blue' : 'orange'),
+                    color: color,
                     pieces: { small:2, medium:2, large:2 }
                 };
+                
+                // その人に「あなたはプレイヤーになった」と通知
                 io.to(nextUser.id).emit("assign", { slot: slot });
             }
         }
     });
 
-    // リセット＆開始判定
+    // 3. ゲームリセット処理
+    // 意思決定フラグをクリア
     room.decisions = { Blue: null, Orange: null };
     room.winner = null;
     room.board = [[[],[],[]],[[],[],[]],[[],[],[]]];
     
+    // 手駒のリセット（残った人も、新しく入った人も）
     if(room.players.Blue) room.players.Blue.pieces = { small:2, medium:2, large:2 };
     if(room.players.Orange) room.players.Orange.pieces = { small:2, medium:2, large:2 };
 
+    // 人数が揃っているか確認して開始
     if (room.players.Blue && room.players.Orange) {
         room.currentTurn = Math.random() < 0.5 ? "Blue" : "Orange";
         room.started = true;
-        io.to(roomID).emit("start_game", sanitizeState(room));
+        io.to(roomID).emit("start_game", sanitizeState(room)); // クライアント側で start_game 受信時にモーダルを閉じる
     } else {
         room.started = false;
         room.currentTurn = null;
@@ -249,7 +263,9 @@ function resolveNextGame(roomID) {
 io.on("connection", (socket) => {
   console.log("client connected:", socket.id);
 
+  // Joinイベント
   socket.on("join", (data, ack) => {
+    
     let roomID = (data && data.room) ? String(data.room) : generateRoomId();
 
     if (!data.room) {
@@ -270,11 +286,12 @@ io.on("connection", (socket) => {
     
     const roomState = rooms[roomID]; 
 
-    // ★重要: 観戦者キューがいる場合、空席があってもまずはキューに並ばせる (割り込み防止)
+    // ★修正: 観戦者キューがいる場合、空席があってもまずはキューに並ばせる (割り込み防止)
     let assigned = null;
     
+    // 観戦者が列を作っているかどうか
     const queueExists = roomState.spectators.length > 0;
-    
+
     if (!queueExists && !roomState.players.Blue) {
       roomState.players.Blue = { id: socket.id, name, color: "blue", pieces: { small:2, medium:2, large:2 } };
       assigned = "Blue";
@@ -283,19 +300,23 @@ io.on("connection", (socket) => {
       assigned = "Orange";
     } else {
       assigned = "spectator";
+      // 観戦者キューに追加
       roomState.spectators.push({ id: socket.id, name });
     }
 
     socket.data.playerSlot = assigned;
+
     socket.emit("assign", { slot: assigned });
 
+    // ゲーム開始判定
     if (roomState.players.Blue && roomState.players.Orange) {
       if (!roomState.started && !roomState.winner) {
-          roomState.currentTurn = Math.random() < 0.5 ? "Blue" : "Orange";
+          roomState.currentTurn =Math.random() < 0.5 ? "Blue" : "Orange";
           roomState.started = true;
           io.to(roomID).emit("start_game", sanitizeState(roomState));
       }
       else {
+        // すでに開始済みの場合
         socket.emit("start_game", sanitizeState(roomState));
       }
     } else {
@@ -306,6 +327,7 @@ io.on("connection", (socket) => {
     if (ack) ack({ ok: true, slot: assigned, roomID: roomID });
   });
 
+  // 駒の配置・移動
   socket.on("place_piece", (payload, ack) => {
     const roomID = socket.data.roomID;
     if (!roomID || !rooms[roomID]) return;
@@ -320,14 +342,14 @@ io.on("connection", (socket) => {
     if (currentRole !== "Blue" && currentRole !== "Orange") return ack({ error: "spectator" });
     if (!roomState.started) return ack({ error: "not_started" });
     if (roomState.winner) return ack({ error: "game_over" });
-    if (roomState.currentTurn !== currentRole) return ack({ error: "not_your_turn" });
+    if (roomState.currentTurn !== currentRole) return ack({ error: "あなたのターンではありません" });
 
     try {
         if (payload.action === "place_from_hand") {
             const { size, to } = payload;
             const player = roomState.players[currentRole];
             if (player.pieces[size] <= 0) throw new Error("no piece");
-            if (!canPlaceAt(roomState.board, to.r, to.c, size)) throw new Error("illegal");
+            if (!canPlaceAt(roomState.board, to.r, to.c, size)) throw new Error("その場所に駒は置けません");
             
             roomState.board[to.r][to.c].push({ owner: currentRole, size, color: player.color });
             player.pieces[size]--;
@@ -338,7 +360,7 @@ io.on("connection", (socket) => {
             if (!srcStack.length) throw new Error("empty");
             const top = srcStack.at(-1);
             if (top.owner !== currentRole) throw new Error("not yours");
-            if (!canPlaceAt(roomState.board, to.r, to.c, top.size)) throw new Error("illegal");
+            if (!canPlaceAt(roomState.board, to.r, to.c, top.size)) throw new Error("その場所に駒は置けません");
 
             srcStack.pop();
             let winner = checkWinner(roomState.board);
@@ -412,14 +434,17 @@ io.on("connection", (socket) => {
       const roomID = socket.data.roomID;
       if (!roomID || !rooms[roomID]) return;
       const room = rooms[roomID];
+
+      // 勝負がついていない時は無視
       if (!room.winner) return;
 
-      const choice = data.choice; 
+      const choice = data.choice; // 'rematch', 'spectate', 'leave'
+      
       let role = null;
       if (room.players.Blue && room.players.Blue.id === socket.id) role = 'Blue';
       else if (room.players.Orange && room.players.Orange.id === socket.id) role = 'Orange';
 
-      if (!role) return;
+      if (!role) return; 
 
       room.decisions[role] = choice;
 
