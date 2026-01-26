@@ -1,4 +1,4 @@
-// server.js (Queue-based Spectator & Two-way Decision System)
+// server.js (Handling Player Leave, Auto-Promotion, Board Reset)
 import express from "express";
 import http from "http";
 import { Server as IOServer } from "socket.io";
@@ -98,34 +98,106 @@ function sanitizeState(state) {
   };
 }
 
-// ----------------- 次のゲームの解決ロジック -----------------
-// 両プレイヤーの意思決定が出揃った（あるいは片方が抜けた）時に呼び出す
+// ----------------- プレイヤー離脱・補充・リセットロジック -----------------
+function handlePlayerLeave(roomID, socketID) {
+    const room = rooms[roomID];
+    if (!room) return;
+
+    // 1. 誰が抜けたか特定
+    let leftRole = null;
+    let leaverName = "プレイヤー";
+
+    if (room.players.Blue && room.players.Blue.id === socketID) {
+        leftRole = 'Blue';
+        leaverName = room.players.Blue.name;
+        room.players.Blue = null;
+    } else if (room.players.Orange && room.players.Orange.id === socketID) {
+        leftRole = 'Orange';
+        leaverName = room.players.Orange.name;
+        room.players.Orange = null;
+    }
+
+    // 観戦者リストから削除（常に実行）
+    room.spectators = room.spectators.filter(u => u.id !== socketID);
+
+    // プレイヤーが抜けた場合のみ、ゲームリセットと補充を行う
+    if (leftRole) {
+        // 全員に通知
+        const systemMsg = `${leaverName}さんが退出しました。ゲームをリセットして次の対戦へ進みます。`;
+        io.to(roomID).emit("system_message", { text: systemMsg });
+
+        // 盤面リセット
+        room.board = [[[],[],[]],[[],[],[]],[[],[],[]]];
+        room.winner = null;
+        room.decisions = { Blue: null, Orange: null };
+        // ゲーム進行中だった場合は中断
+        room.started = false;
+
+        // 2. 空席を観戦者から補充 (Blue, Orange両方チェック)
+        ['Blue', 'Orange'].forEach(slot => {
+            if (!room.players[slot] && room.spectators.length > 0) {
+                // 先頭の人を昇格
+                const nextUser = room.spectators.shift();
+                room.players[slot] = {
+                    id: nextUser.id,
+                    name: nextUser.name,
+                    color: (slot === 'Blue' ? 'blue' : 'orange'),
+                    pieces: { small: 2, medium: 2, large: 2 }
+                };
+                // 本人に通知
+                io.to(nextUser.id).emit("assign", { slot: slot });
+                io.to(roomID).emit("system_message", { text: `${nextUser.name}さんが${slot}プレイヤーに着席しました。` });
+            }
+        });
+
+        // 3. 人数が揃っていれば即再開、揃っていなければ待機状態へ
+        if (room.players.Blue && room.players.Orange) {
+            // 手駒の完全リセット
+            room.players.Blue.pieces = { small: 2, medium: 2, large: 2 };
+            room.players.Orange.pieces = { small: 2, medium: 2, large: 2 };
+            
+            room.currentTurn = Math.random() < 0.5 ? "Blue" : "Orange";
+            room.started = true;
+            io.to(roomID).emit("start_game", sanitizeState(room));
+        } else {
+            room.currentTurn = null;
+            io.to(roomID).emit("update_state", sanitizeState(room));
+        }
+    } else {
+        // 観戦者が抜けただけなら人数更新のみ
+        io.to(roomID).emit("update_state", sanitizeState(room));
+    }
+
+    // 部屋が空なら削除
+    const socketsInRoom = io.sockets.adapter.rooms.get(roomID);
+    if (!socketsInRoom || socketsInRoom.size === 0) {
+        delete rooms[roomID];
+        console.log(`Room deleted: ${roomID}`);
+    }
+}
+
+// ----------------- 次のゲームの解決ロジック (通常終了時用) -----------------
 function resolveNextGame(roomID) {
     const room = rooms[roomID];
     if (!room) return;
 
-    // 現在のプレイヤー情報
     const pBlue = room.players.Blue;
     const pOrange = room.players.Orange;
     const dBlue = room.decisions.Blue;
     const dOrange = room.decisions.Orange;
 
-    // 1. 各プレイヤーの処遇を決定
-    // Blueの処理
+    // Blue処理
     if (pBlue) {
         if (dBlue === 'leave') {
             room.players.Blue = null;
         } else if (dBlue === 'spectate') {
-            // 観戦者列の最後尾へ
             room.spectators.push({ id: pBlue.id, name: pBlue.name });
             room.players.Blue = null;
-            // クライアントへ役割変更通知
             io.to(pBlue.id).emit("assign", { slot: "spectator" });
         }
-        // 'rematch' ならそのまま room.players.Blue に残る
     }
 
-    // Orangeの処理
+    // Orange処理
     if (pOrange) {
         if (dOrange === 'leave') {
             room.players.Orange = null;
@@ -136,48 +208,38 @@ function resolveNextGame(roomID) {
         }
     }
 
-    // 2. 空いた席を観戦者キューの先頭から埋める
+    // 補充
     ['Blue', 'Orange'].forEach(slot => {
         if (!room.players[slot]) {
             if (room.spectators.length > 0) {
-                // 先頭の人を取り出す
                 const nextUser = room.spectators.shift();
-                const color = (slot === 'Blue') ? 'blue' : 'orange';
-                
                 room.players[slot] = {
                     id: nextUser.id,
                     name: nextUser.name,
-                    color: color,
+                    color: (slot === 'Blue' ? 'blue' : 'orange'),
                     pieces: { small:2, medium:2, large:2 }
                 };
-                
-                // その人に「あなたはプレイヤーになった」と通知
                 io.to(nextUser.id).emit("assign", { slot: slot });
             }
         }
     });
 
-    // 3. ゲームリセット処理
-    // 意思決定フラグをクリア
+    // リセット＆開始判定
     room.decisions = { Blue: null, Orange: null };
     room.winner = null;
     room.board = [[[],[],[]],[[],[],[]],[[],[],[]]];
     
-    // 手駒のリセット（残った人も、新しく入った人も）
     if(room.players.Blue) room.players.Blue.pieces = { small:2, medium:2, large:2 };
     if(room.players.Orange) room.players.Orange.pieces = { small:2, medium:2, large:2 };
 
-    // 人数が揃っているか確認して開始
     if (room.players.Blue && room.players.Orange) {
         room.currentTurn = Math.random() < 0.5 ? "Blue" : "Orange";
         room.started = true;
-        io.to(roomID).emit("start_game", sanitizeState(room)); // クライアント側で start_game 受信時にモーダルを閉じる
+        io.to(roomID).emit("start_game", sanitizeState(room));
     } else {
         room.started = false;
         room.currentTurn = null;
         io.to(roomID).emit("update_state", sanitizeState(room));
-        // プレイヤーが足りない場合、残っているプレイヤーには待機画面を見せる必要がある
-        // クライアント側で update_state を見て、winnerがnullならリザルトを消す処理を入れる
     }
 }
 
@@ -187,9 +249,7 @@ function resolveNextGame(roomID) {
 io.on("connection", (socket) => {
   console.log("client connected:", socket.id);
 
-  // Joinイベント
   socket.on("join", (data, ack) => {
-    
     let roomID = (data && data.room) ? String(data.room) : generateRoomId();
 
     if (!data.room) {
@@ -210,34 +270,32 @@ io.on("connection", (socket) => {
     
     const roomState = rooms[roomID]; 
 
-    // プレイヤー割り当て logic (キュー方式対応)
+    // ★重要: 観戦者キューがいる場合、空席があってもまずはキューに並ばせる (割り込み防止)
     let assigned = null;
-    if (!roomState.players.Blue) {
+    
+    const queueExists = roomState.spectators.length > 0;
+    
+    if (!queueExists && !roomState.players.Blue) {
       roomState.players.Blue = { id: socket.id, name, color: "blue", pieces: { small:2, medium:2, large:2 } };
       assigned = "Blue";
-    } else if (!roomState.players.Orange) {
+    } else if (!queueExists && !roomState.players.Orange) {
       roomState.players.Orange = { id: socket.id, name, color: "orange", pieces: { small:2, medium:2, large:2 } };
       assigned = "Orange";
     } else {
       assigned = "spectator";
-      // 観戦者キューに追加
       roomState.spectators.push({ id: socket.id, name });
     }
 
     socket.data.playerSlot = assigned;
-
     socket.emit("assign", { slot: assigned });
 
-    // ゲーム開始判定
     if (roomState.players.Blue && roomState.players.Orange) {
       if (!roomState.started && !roomState.winner) {
-          roomState.currentTurn =Math.random() < 0.5 ? "Blue" : "Orange";
+          roomState.currentTurn = Math.random() < 0.5 ? "Blue" : "Orange";
           roomState.started = true;
           io.to(roomID).emit("start_game", sanitizeState(roomState));
       }
       else {
-        // ★修正: すでに開始済みの場合（観戦者などの途中参加）
-        // 入室した本人だけに現状を送る（既存プレイヤーの画面には影響させない）
         socket.emit("start_game", sanitizeState(roomState));
       }
     } else {
@@ -248,7 +306,6 @@ io.on("connection", (socket) => {
     if (ack) ack({ ok: true, slot: assigned, roomID: roomID });
   });
 
-  // 駒の配置・移動
   socket.on("place_piece", (payload, ack) => {
     const roomID = socket.data.roomID;
     if (!roomID || !rooms[roomID]) return;
@@ -256,8 +313,6 @@ io.on("connection", (socket) => {
     const roomState = rooms[roomID];
     const slot = socket.data.playerSlot;
 
-    // slot変数は初期接続時のものを持っている可能性があるため、再確認
-    // 観戦者に移動した後に操作しようとしていないかチェック
     let currentRole = 'spectator';
     if (roomState.players.Blue && roomState.players.Blue.id === socket.id) currentRole = 'Blue';
     if (roomState.players.Orange && roomState.players.Orange.id === socket.id) currentRole = 'Orange';
@@ -265,14 +320,14 @@ io.on("connection", (socket) => {
     if (currentRole !== "Blue" && currentRole !== "Orange") return ack({ error: "spectator" });
     if (!roomState.started) return ack({ error: "not_started" });
     if (roomState.winner) return ack({ error: "game_over" });
-    if (roomState.currentTurn !== currentRole) return ack({ error: "あなたのターンではありません" });
+    if (roomState.currentTurn !== currentRole) return ack({ error: "not_your_turn" });
 
     try {
         if (payload.action === "place_from_hand") {
             const { size, to } = payload;
             const player = roomState.players[currentRole];
             if (player.pieces[size] <= 0) throw new Error("no piece");
-            if (!canPlaceAt(roomState.board, to.r, to.c, size)) throw new Error("その場所に駒は置けません");
+            if (!canPlaceAt(roomState.board, to.r, to.c, size)) throw new Error("illegal");
             
             roomState.board[to.r][to.c].push({ owner: currentRole, size, color: player.color });
             player.pieces[size]--;
@@ -283,7 +338,7 @@ io.on("connection", (socket) => {
             if (!srcStack.length) throw new Error("empty");
             const top = srcStack.at(-1);
             if (top.owner !== currentRole) throw new Error("not yours");
-            if (!canPlaceAt(roomState.board, to.r, to.c, top.size)) throw new Error("その場所に駒は置けませんl");
+            if (!canPlaceAt(roomState.board, to.r, to.c, top.size)) throw new Error("illegal");
 
             srcStack.pop();
             let winner = checkWinner(roomState.board);
@@ -317,12 +372,10 @@ io.on("connection", (socket) => {
     if (!roomID || !rooms[roomID]) return;
     const roomState = rooms[roomID];
     
-    // 名前取得を厳密に
     let name = "観戦者";
     if (roomState.players.Blue && roomState.players.Blue.id === socket.id) name = roomState.players.Blue.name;
     else if (roomState.players.Orange && roomState.players.Orange.id === socket.id) name = roomState.players.Orange.name;
     else {
-        // 観戦者リストから探す
         const s = roomState.spectators.find(u => u.id === socket.id);
         if(s) name = s.name;
     }
@@ -355,94 +408,42 @@ io.on("connection", (socket) => {
     io.to(roomID).emit("cheer", msg);
   });
 
- ///対戦終了後のしょり
   socket.on("submit_decision", (data) => {
       const roomID = socket.data.roomID;
       if (!roomID || !rooms[roomID]) return;
       const room = rooms[roomID];
-
-      // 勝負がついていない時は無視
       if (!room.winner) return;
 
-      const choice = data.choice; // 'rematch', 'spectate', 'leave'
-      
-      // 誰からのリクエストか特定
+      const choice = data.choice; 
       let role = null;
       if (room.players.Blue && room.players.Blue.id === socket.id) role = 'Blue';
       else if (room.players.Orange && room.players.Orange.id === socket.id) role = 'Orange';
 
-      if (!role) return; // プレイヤー以外は決定権なし
+      if (!role) return;
 
-      // 決定を保存
       room.decisions[role] = choice;
 
-      // もう片方のプレイヤーの状態を確認
       const otherRole = (role === 'Blue') ? 'Orange' : 'Blue';
       const otherPlayer = room.players[otherRole];
 
-      // 「相手がいない」または「相手もすでに決定済み」なら解決へ
-      // ※相手がいない(=切断済み)場合は即座に実行
       if (!otherPlayer || room.decisions[otherRole]) {
           resolveNextGame(roomID);
-      } else {
-          // 相手待ち状態であることを送信してもよいが、クライアント側でUI制御済み
       }
   });
 
-  // 切断処理
+  // --- 退出・切断処理 ---
+  socket.on("leave_room", () => {
+    const roomID = socket.data.roomID;
+    if (roomID) {
+        handlePlayerLeave(roomID, socket.id);
+        // この後クライアント側でリロードされる
+    }
+  });
+
   socket.on("disconnect", () => {
     const roomID = socket.data.roomID;
-    if (roomID && rooms[roomID]) {
-        const room = rooms[roomID];
-        
-        // プレイヤーだった場合
-        let role = null;
-        if (room.players.Blue && room.players.Blue.id === socket.id) role = 'Blue';
-        if (room.players.Orange && room.players.Orange.id === socket.id) role = 'Orange';
-
-        // 観戦者リストから削除
-        room.spectators = room.spectators.filter(u => u.id !== socket.id);
-
-        if (role) {
-            // ゲーム中なら中断、リザルト画面中なら「leave」として扱う
-            if (room.started) {
-                // ゲーム中の切断 -> 即終了
-                room.players[role] = null;
-                room.started = false;
-                io.to(roomID).emit("update_state", sanitizeState(room));
-            } else if (room.winner) {
-                // リザルト画面での切断 -> 'leave'を選択したとみなす
-                room.decisions[role] = 'leave';
-                const otherRole = (role === 'Blue') ? 'Orange' : 'Blue';
-                // 相手が決定済み、または相手もいないなら解決
-                if (!room.players[otherRole] || room.decisions[otherRole]) {
-                    resolveNextGame(roomID);
-                }
-            } else {
-                // 待機中などの切断
-                room.players[role] = null;
-                // 観戦者から補充するロジックをここでも流用するため resolveNextGame 的な処理が必要だが
-                // 簡易的に空いた席を補充する
-                if (room.spectators.length > 0) {
-                    const nextUser = room.spectators.shift();
-                    room.players[role] = {
-                        id: nextUser.id,
-                        name: nextUser.name,
-                        color: (role==='Blue'?'blue':'orange'),
-                        pieces: { small:2, medium:2, large:2 }
-                    };
-                    io.to(nextUser.id).emit("assign", { slot: role });
-                }
-                io.to(roomID).emit("update_state", sanitizeState(room));
-            }
-        }
-
-        // 誰もいなくなったら部屋削除
-        const socketsInRoom = io.sockets.adapter.rooms.get(roomID);
-        if (!socketsInRoom || socketsInRoom.size === 0) {
-            delete rooms[roomID];
-            console.log(`Room deleted: ${roomID}`);
-        }
+    if (roomID) {
+        handlePlayerLeave(roomID, socket.id);
     }
   });
 });

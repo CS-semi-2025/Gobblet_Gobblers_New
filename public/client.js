@@ -249,25 +249,6 @@ function animate() {
     if (controls) controls.update(); 
     renderer.render(scene, camera);
 }
-const errorPopup = document.getElementById("errorPopup");
-const errorPopupText = document.getElementById("errorPopupText");
-
-function showPopup(msg) {
-  if (!errorPopup || !errorPopupText) return;
-
-  errorPopup.classList.remove("hidden");
-  errorPopupText.textContent = msg;
-
-  // エラーっぽい色にする
-  errorPopupText.style.color = "#ff4757";
-  errorPopup.querySelector(".cutin-content").style.borderColor = "#ff4757";
-
-  setTimeout(() => {
-    errorPopup.classList.add("hidden");
-  }, 2000);
-}
-
-
 
 
  // --- チャットメッセージ処理 ---
@@ -286,9 +267,9 @@ function launchFlyingComment(text) {
 }
 
 function randomColor() {
-  const r = Math.floor(Math.random() * 150 + 55); 
-  const g = Math.floor(Math.random() * 150 + 55);
-  const b = Math.floor(Math.random() * 150 + 55);
+  const r = Math.floor(Math.random() * 200 + 55); 
+  const g = Math.floor(Math.random() * 200 + 55);
+  const b = Math.floor(Math.random() * 200 + 55);
   return `rgb(${r},${g},${b})`;
 }
 
@@ -809,7 +790,7 @@ function render(stateObj) {
     // ★追加: 待機画面制御 (winnerなし, started=false の場合)
     if (!state.started && !state.winner) {
         // もしリザルト画面が出ていた場合、プレイヤーが変わったら閉じる
-        // ただし、自分がまだ結果画面を見ている場合はそのまま（次のゲーム開始時に消える）
+        resultOverlay.classList.add('hidden');
     }
 }
 
@@ -892,12 +873,7 @@ function onCanvasClick(event) {
                 to: { r: targetR, c: targetC } 
             };
             socket.emit('place_piece', payload, (ack) => {
-                if (ack && ack.error) {
-                    showPopup('エラー: ' + ack.error);
-                    addLog('エラー: ' + ack.error);
-                    return;
-                }
-                clearSelection();
+                if (ack && ack.error) addLog('エラー: ' + ack.error);
             });
             addLog(`手駒を送信: ${selectedPiece.size} -> (${targetR},${targetC})`);
             clearSelection();
@@ -918,12 +894,7 @@ function onCanvasClick(event) {
                 to: { r: targetR, c: targetC } 
             };
             socket.emit('place_piece', payload, (ack) => {
-                if (ack && ack.error) {
-                    showPopup('エラー: ' + ack.error);
-                    addLog('エラー: ' + ack.error);
-                    return;
-                }
-                clearSelection();
+                if (ack && ack.error) addLog('エラー: ' + ack.error);
             });
             addLog(`盤上駒の移動を送信: (${selectedPiece.from.r},${selectedPiece.from.c}) -> (${targetR},${targetC})`);
             clearSelection();
@@ -972,9 +943,10 @@ function onWindowResize() {
 
 // --- 既存のSocket.IOロジック (DOM手駒・ログ) ---
 
-function addLog(s){
+function addLog(s, isSystem = false){
   const t = new Date().toLocaleTimeString();
-  logEl.innerHTML = `<div>[${t}] ${escapeHtml(s)}</div>` + logEl.innerHTML;
+  const cls = isSystem ? ' class="system-msg"' : '';
+  logEl.innerHTML = `<div${cls}>[${t}] ${escapeHtml(s)}</div>` + logEl.innerHTML;
 }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -1079,10 +1051,11 @@ tabButtons.forEach(btn => {
 
 if (modalLeaveBtn) {
     modalLeaveBtn.addEventListener('click', () => {
-        socket.disconnect();
-        modalOverlay.classList.add('hidden');
+        // ★修正: サーバーへ退出を通知してからリロード
         if(confirm("退出してホームに戻りますか？")){
-            window.location.href = window.location.pathname; 
+             socket.emit("leave_room");
+             modalOverlay.classList.add('hidden');
+             window.location.href = window.location.pathname; 
         }
     });
 }
@@ -1152,7 +1125,7 @@ function onDecisionMade(choice) {
     });
     
     if (choice === 'leave') {
-        socket.disconnect();
+        socket.emit("leave_room");
         window.location.href = window.location.pathname; // ホームへ
         return;
     }
@@ -1268,6 +1241,9 @@ socket.on('game_over', (d) => {
   clearSelection();
   render(d.state);
   showResult(d.winner);
+});
+socket.on('system_message', (d) => {
+  addLog(d.text, true);
 });
 socket.on('disconnect', () => {
   addLog('サーバー切断');
