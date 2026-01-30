@@ -484,7 +484,7 @@ main{ display:flex; gap:16px; margin-top:12px; }
   position: fixed;
   top: 20%;
   left: 100%;
-  font-size: 30px;
+  font-size: 40px;
   font-weight: bold;
   text-shadow: 2px 2px 6px rgba(0,0,0,0.7);
   white-space: nowrap;
