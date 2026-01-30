@@ -669,7 +669,7 @@ function render(stateObj) {
     if (!state.started && !state.winner) {
         gameStateLabel.textContent = '待機中 (観戦者: ' + (state.spectatorCount || 0) + '人)';
     } else {
-        gameStateLabel.textContent = state.winner ? `終了: ${state.winner}` : '進行中';
+        gameStateLabel.textContent = state.winner ? `終了: ${state.winner}` : `進行中(観戦: ${state.spectatorCount || 0}人)`;
     }
     meLabel.textContent = mySlot ? `${mySlot}` : '未割当';
 
