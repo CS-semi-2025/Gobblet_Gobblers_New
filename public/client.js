@@ -809,7 +809,7 @@ function render(stateObj) {
     // ★追加: 待機画面制御 (winnerなし, started=false の場合)
     if (!state.started && !state.winner) {
         // もしリザルト画面が出ていた場合、プレイヤーが変わったら閉じる
-        // ただし、自分がまだ結果画面を見ている場合はそのまま（次のゲーム開始時に消える）
+        resultOverlay.classList.add('hidden');
     }
 }
 
@@ -972,9 +972,10 @@ function onWindowResize() {
 
 // --- 既存のSocket.IOロジック (DOM手駒・ログ) ---
 
-function addLog(s){
+function addLog(s, isSystem = false){
   const t = new Date().toLocaleTimeString();
-  logEl.innerHTML = `<div>[${t}] ${escapeHtml(s)}</div>` + logEl.innerHTML;
+  const cls = isSystem ? ' class="system-msg"' : '';
+  logEl.innerHTML = `<div${cls}>[${t}] ${escapeHtml(s)}</div>` + logEl.innerHTML;
 }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -1079,10 +1080,11 @@ tabButtons.forEach(btn => {
 
 if (modalLeaveBtn) {
     modalLeaveBtn.addEventListener('click', () => {
-        socket.disconnect();
-        modalOverlay.classList.add('hidden');
+        // ★修正: サーバーへ退出を通知してからリロード
         if(confirm("退出してホームに戻りますか？")){
-            window.location.href = window.location.pathname; 
+             socket.emit("leave_room");
+             modalOverlay.classList.add('hidden');
+             window.location.href = window.location.pathname; 
         }
     });
 }
@@ -1152,7 +1154,7 @@ function onDecisionMade(choice) {
     });
     
     if (choice === 'leave') {
-        socket.disconnect();
+        socket.emit("leave_room");
         window.location.href = window.location.pathname; // ホームへ
         return;
     }
@@ -1268,6 +1270,9 @@ socket.on('game_over', (d) => {
   clearSelection();
   render(d.state);
   showResult(d.winner);
+});
+socket.on('system_message', (d) => {
+  addLog(d.text, true);
 });
 socket.on('disconnect', () => {
   addLog('サーバー切断');
